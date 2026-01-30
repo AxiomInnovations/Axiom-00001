@@ -1,0 +1,4338 @@
+<!--    // © 2026 Axiom Innovations Ltd — All rights reserved.
+// Internal prototype. Not licensed for reuse. --> 
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MIDI Generator MVP+ (Locks, Arps/Strum, Stems, Modes, Modal Mixture)</title>
+
+  <!-- Tone.js (global Tone) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/15.3.5/Tone.js"></script>
+  <!-- @tonejs/midi (global Midi) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#0f1722; --text:#e7eefc; --muted:#9fb0c8;
+      --line:#1f2b3d; --accent:#67b7ff; --accent2:#7cf1c7; --danger:#ff6b6b;
+      --shadow: 0 10px 30px rgba(0,0,0,.35); --radius:16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--sans); color:var(--text); min-height:100vh;
+      background:
+        radial-gradient(1200px 800px at 20% 0%, rgba(103,183,255,.10), transparent 55%),
+        radial-gradient(900px 700px at 85% 10%, rgba(124,241,199,.09), transparent 55%),
+        var(--bg);
+    }
+    .wrap{max-width: 1180px; margin: 24px auto; padding: 0 16px 40px;}
+    header{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:14px;}
+    h1{font-size:18px; margin:0; letter-spacing:.3px;}
+    .sub{margin:6px 0 0; color:var(--muted); font-size:12.5px; line-height:1.35; max-width: 860px;}
+    .pill{font-size:12px; color:var(--muted); border:1px solid var(--line); background: rgba(255,255,255,.03);
+      padding:8px 10px; border-radius: 999px; box-shadow: var(--shadow); white-space:nowrap;}
+    .grid{display:grid; grid-template-columns: 460px 1fr; gap:14px;}
+    @media (max-width: 1020px){ .grid{grid-template-columns: 1fr;} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden;
+    }
+    .hd{padding: 12px 12px 9px; border-bottom:1px solid var(--line); background: rgba(0,0,0,.18);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;}
+    .hd b{font-size:12.5px; letter-spacing:.3px;}
+    .bd{padding: 12px;}
+    .row{display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;}
+    .row3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;}
+    .row4{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px;}
+    label{display:block; font-size: 12px; color: var(--muted); margin-bottom: 6px;}
+    select,input[type="number"],input[type="text"],input[type="range"]{
+      width:100%; background: rgba(5,10,18,.55); color: var(--text);
+      border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px; outline:none;
+    }
+    input[type="range"]{padding: 10px 0;}
+    .mini{font-size: 11px; color: var(--muted); margin-top: 6px; display:flex; justify-content:space-between; gap:10px;}
+    .btns{display:flex; flex-wrap:wrap; gap:10px; margin-top: 12px;}
+    button{
+      border:1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text);
+      border-radius: 12px; padding: 10px 12px; cursor:pointer; transition: .15s ease;
+      display:inline-flex; align-items:center; gap:8px; font-weight:700; letter-spacing:.2px;
+    }
+    button:hover{transform: translateY(-1px); border-color: rgba(103,183,255,.5);}
+    button.primary{background: linear-gradient(180deg, rgba(103,183,255,.22), rgba(103,183,255,.10));
+      border-color: rgba(103,183,255,.45);}
+    button.good{background: linear-gradient(180deg, rgba(124,241,199,.18), rgba(124,241,199,.08));
+      border-color: rgba(124,241,199,.40);}
+    button.danger{background: linear-gradient(180deg, rgba(255,107,107,.18), rgba(255,107,107,.08));
+      border-color: rgba(255,107,107,.40);}
+    button:disabled{opacity:.55; cursor:not-allowed; transform:none;}
+    .out{display:grid; grid-template-rows: auto 1fr; min-height: 560px;}
+    .mono{font-family: var(--mono); font-size: 12px; color: #cfe0ff; line-height:1.45; white-space: pre-wrap; word-break: break-word;}
+    .log{background: rgba(5,10,18,.45); border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-height: 120px;}
+    .stack{display:grid; grid-template-columns: 1fr; gap: 10px;}
+    .badge{display:inline-flex; align-items:center; gap:8px; font-size: 12px; color: var(--muted);
+      border:1px solid var(--line); padding: 7px 10px; border-radius: 999px; background: rgba(0,0,0,.12);}
+    .dot{width:8px;height:8px;border-radius:99px;background: var(--accent); box-shadow: 0 0 0 4px rgba(103,183,255,.12);}
+    .dot.g{background: var(--accent2); box-shadow: 0 0 0 4px rgba(124,241,199,.10);}
+    .dot.r{background: var(--danger); box-shadow: 0 0 0 4px rgba(255,107,107,.10);}
+    .section{border:1px solid var(--line); border-radius: 14px; padding: 10px; background: rgba(0,0,0,.10); margin-top:10px;}
+    .sectTitle{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;}
+    .sectTitle b{font-size:12px; letter-spacing:.3px;}
+    .check{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
+    .check input{width:auto;}
+    .smallnote{color: var(--muted); font-size: 12px; margin-top: 10px; line-height:1.35;}
+
+
+/* ============================================================
+   LAYOUT OVERRIDES (3-column full width per wireframe)
+   (No color scheme changes — layout only)
+   ============================================================ */
+.wrap{
+  max-width: none;
+  width: 100%;
+  margin: 24px 0;
+  padding: 0 16px 40px;
+}
+
+/* 3-column layout */
+.grid{
+  grid-template-columns: 360px 1fr 320px;
+  align-items: start;
+}
+
+/* middle column is two stacked cards */
+.midStack{
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 14px;
+}
+
+/* piano-roll card a bit taller */
+.out{
+  min-height: 640px;
+}
+
+/* responsive collapse */
+@media (max-width: 1200px){
+  .grid{ grid-template-columns: 340px 1fr 300px; }
+}
+@media (max-width: 1020px){
+  .grid{ grid-template-columns: 1fr; }
+  .midStack{ grid-template-rows: auto auto; }
+}
+
+
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>MIDI Generator MVP+ (Locks • Arps/Strum • Stems • Modes • Major/Minor Mix)</h1>
+        <p class="sub">
+          Generate chords + bass + melody, lock any part, regenerate others, preview with synths, export combined MIDI or separate stems.
+          Add “modal mixture” (major + borrowed minor chords / vice-versa) for that deadmau5-ish vibe.
+        </p>
+      </div>
+      <div class="pill">Tip: put anything in “Seed” to make results repeatable</div>
+    </header>
+
+   <div class="grid">
+  <!-- LEFT: Controls + Summary (summary at bottom) -->
+  <div class="card">
+    <div class="hd">
+      <b>Controls</b>
+      <span class="badge"><span id="audioDot" class="dot r"></span><span id="audioState">Audio locked</span></span>
+    </div>
+
+    <div class="bd stack">
+      <!-- controls content -->
+      <div>
+        <div class="row">
+          <div>
+            <label>Key</label>
+            <select id="key">
+              <option>C</option><option>C#</option><option>D</option><option>D#</option><option>E</option>
+              <option selected>F</option><option>F#</option><option>G</option><option>G#</option><option>A</option><option>A#</option><option>B</option>
+            </select>
+          </div>
+          <div>
+            <label>Scale / Mode</label>
+            <select id="scale">
+              <option value="ionian">Major (Ionian)</option>
+              <option selected value="aeolian">Minor (Aeolian)</option>
+              <option value="dorian">Dorian</option>
+              <option value="phrygian">Phrygian</option>
+              <option value="lydian">Lydian</option>
+              <option value="mixolydian">Mixolydian</option>
+              <option value="harmonic_minor">Harmonic Minor</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row3">
+          <div>
+            <label>Bars</label>
+            <select id="bars">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="16">16</option>
+            </select>
+          </div>
+          <div>
+            <label>Tempo (BPM)</label>
+            <input id="tempo" type="number" min="40" max="220" value="124" />
+          </div>
+          <div>
+            <label>Seed (optional)</label>
+            <input id="seed" type="text" placeholder="e.g. axiom-001" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Humanize (ms)</label>
+            <input id="humanize" type="range" min="0" max="30" value="8" />
+            <div class="mini"><span>0</span><span id="humanizeVal">8ms</span><span>30</span></div>
+          </div>
+          <div>
+            <label>Swing (%)</label>
+            <input id="swing" type="range" min="0" max="60" value="16" />
+            <div class="mini"><span>0</span><span id="swingVal">16%</span><span>60</span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="sectTitle">
+            <b>Harmony Style</b>
+            <span class="badge"><span class="dot"></span><span>Major/Minor Mix</span></span>
+          </div>
+          <div class="row">
+            <div>
+              <label>Progression vibe</label>
+              <select id="mood">
+                <option value="uplifting">Uplifting</option>
+                <option value="melancholic" selected>Melancholic</option>
+                <option value="dark">Dark</option>
+                <option value="tense">Tense</option>
+                <option value="progressive">Progressive (EDM-ish)</option>
+              </select>
+            </div>
+            <div>
+              <label>Mixture amount</label>
+              <input id="mixture" type="range" min="0" max="100" value="0" />
+              <div class="mini"><span>0%</span><span id="mixtureVal">35%</span><span>100%</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Borrow direction</label>
+              <select id="mixtureDir">
+                <option value="auto" selected>Auto (parallel major/minor)</option>
+                <option value="borrow_minor">Borrow from Minor (in Major modes)</option>
+                <option value="borrow_major">Borrow from Major (in Minor modes)</option>
+              </select>
+            </div>
+            <div>
+              <label>Chord extensions</label>
+              <select id="extensions">
+                <option value="none">None (triads)</option>
+                <option value="some" selected>Some (7ths occasionally)</option>
+                <option value="more">More (7ths/9ths feel)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="smallnote">
+          Notes:
+          • Locks freeze that part’s events across regenerations.
+          • “Mixture amount” introduces borrowed chords (minor iv, ♭VI, ♭VII etc. in major; and major I/IV/V flavours in minor).
+        </div>
+      </div>
+
+      <!-- summary at bottom -->
+      <div class="log mono" id="summary">Generate something…</div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: Piano Roll + Play/Stop ONLY -->
+  <div class="card out">
+    <div class="hd">
+      <b>Piano Roll</b>
+      <span class="badge"><span class="dot"></span><span id="status">Ready</span></span>
+    </div>
+    <div class="bd stack">
+
+<div class="section" style="margin-top:0;">
+<div class="sectTitle">
+  <b>Draw</b>
+  <span class="badge"><span class="dot"></span><span>Double-click to add</span></span>
+</div>
+  <div class="row">
+    <div>
+      <label>Draw track</label>
+      <select id="drawTrack">
+        <option value="Melody" selected>Melody</option>
+        <option value="Bass">Bass</option>
+        <option value="Chords">Chords</option>
+      </select>
+    </div>
+    <div>
+      <label>Draw length</label>
+      <select id="drawLen">
+        <option value="1" selected>1/4 (1 beat)</option>
+        <option value="2">1/2 (2 beats)</option>
+        <option value="4">1 bar (4 beats)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+
+      <div class="log" id="events">Piano roll will appear here.</div>
+
+    <div class="btns" style="margin-top: 0; display:flex; justify-content:space-between; width:100%;">
+      <!-- LEFT: Generate / Regenerate -->
+      <div style="display:flex; gap:10px;">
+        <button class="primary" id="btnGenerate">⚡ Generate</button>
+        <button id="btnRegen">🔁 Regenerate</button>
+      </div>
+
+      <!-- RIGHT: Play / Stop -->
+      <div style="display:flex; gap:10px;">
+        <button class="good" id="btnPlay" disabled>▶ Play</button>
+        <button class="danger" id="btnStop" disabled>■ Stop</button>
+      </div>
+    </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: Parts + Export at bottom -->
+  <div class="card">
+    <div class="hd">
+      <b>Parts</b>
+      <span class="badge"><span class="dot"></span><span>Locks + Params</span></span>
+    </div>
+
+    <div class="bd stack">
+      <!-- parts -->
+      <div>
+        <div class="section">
+          <div class="sectTitle">
+            <b>Melody</b>
+            <label class="check"><input type="checkbox" id="lockMelody" /> Lock</label>
+          </div>
+          <div class="row">
+            <div>
+              <label>Complexity</label>
+              <select id="melodyComplexity">
+                <option value="simple">Simple</option>
+                <option value="medium">Medium</option>
+                <option value="spicy" selected>Spicy</option>
+              </select>
+            </div>
+            <div>
+              <label>Melody contour</label>
+              <select id="melodyContour">
+                <option value="stepwise">Stepwise</option>
+                <option value="balanced">Balanced</option>
+                <option value="leapy" selected>More leaps</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="sectTitle">
+            <b>Chords</b>
+            <label class="check"><input type="checkbox" id="lockChords" /> Lock</label>
+          </div>
+          <div class="row">
+            <div>
+              <label>Complexity</label>
+              <select id="chordComplexity">
+                <option value="simple">Simple</option>
+                <option value="medium" selected>Medium</option>
+                <option value="spicy">Spicy</option>
+              </select>
+            </div>
+            <div>
+              <label>Style</label>
+              <select id="chordStyle">
+                <option value="block" selected>Block</option>
+                <option value="comp">Comp (rhythmic)</option>
+                <option value="arp8">Arp 1/8</option>
+                <option value="arp16">Arp 1/16</option>
+                <option value="strum">Strum</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Strum/Arp tightness (ms)</label>
+              <input id="chordTight" type="range" min="0" max="40" value="14" />
+              <div class="mini"><span>0</span><span id="chordTightVal">14ms</span><span>40</span></div>
+            </div>
+            <div>
+              <label>Chord register</label>
+              <select id="chordRegister">
+                <option value="low" selected>Lower</option>
+                <option value="mid">Mid</option>
+                <option value="high">Higher</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="sectTitle">
+            <b>Bass</b>
+            <label class="check"><input type="checkbox" id="lockBass" /> Lock</label>
+          </div>
+          <div class="row">
+            <div>
+              <label>Complexity</label>
+              <select id="bassComplexity">
+                <option value="simple">Simple</option>
+                <option value="medium" selected>Medium</option>
+                <option value="spicy">Spicy</option>
+              </select>
+            </div>
+            <div>
+              <label>Bass style</label>
+              <select id="bassStyle">
+                <option value="root" selected>Root-driven</option>
+                <option value="octave">Octaves</option>
+                <option value="groove">Groove (syncopated)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- export at bottom -->
+      <div class="section">
+        <div class="sectTitle">
+          <b>Export</b>
+          <span class="badge"><span class="dot"></span><span>MIDI</span></span>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Export mode</label>
+            <select id="exportMode">
+              <option value="combined" selected>Combined (3 tracks)</option>
+              <option value="stems">Stems (3 files)</option>
+            </select>
+          </div>
+          <div>
+            <label>File prefix</label>
+            <input id="filePrefix" type="text" placeholder="e.g. axiom_deadmau5ish" />
+          </div>
+        </div>
+        <div class="btns" style="margin-top: 0;">
+          <button class="good" id="btnExport" disabled>⬇ Export MIDI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+  <script>
+
+// ============================================================
+// BUILD: META (baseline source of truth)
+// ============================================================
+// BUILD_ID: 2026-01-30_01
+// CHANGELOG:
+// - 2026-01-26_01: Refactor into stable SECTION/PATCH blocks, single APP state, init entrypoint. (No behavior changes intended.)
+// - 2026-01-26_02: Add PATCH INDEX + patch naming conventions + “how to patch” rules. (No behavior changes intended.)
+// - 2026-01-26_03: Output now renders a piano-roll visual (Melody=yellow, Chords=blue, Bass=purple) instead of text event list.
+// - 2026-01-26_04: Piano roll moved above summary and styled to span full output width with taller viewport.
+// - 2026-01-26_05: Re-layout into 3-column full-width screen layout (Controls | Piano Roll + Export | Parts) per wireframe.
+// - 2026-01-26_06: Move Summary to bottom of Controls column; move Export section to bottom of Parts column (per requested layout).
+// - 2026-01-26_07: Move Generate/Regenerate into piano-roll control row; align Generate/Regenerate left and Play/Stop right.
+// - 2026-01-26_08: Piano roll now renders a DAW-style piano keyboard on the left (keeps existing color scheme).
+// - 2026-01-26_10: Piano roll now renders an empty grid+keyboard on page load (no notes) before first generation.
+// - 2026-01-27_02: Piano keyboard restyled so black keys read “between” white keys (DAW-like slot look). Visual-only.
+// - 2026-01-27_03: Fix UI module closure/bindings; restore Generate + render empty piano roll on load.
+// - 2026-01-27_04: Keyboard rail now uses white-key lanes (7 per octave) and draws black keys on the dividers between whites (matches real piano geometry).
+// - 2026-01-27_05: Piano roll grid restyled (neutral grey lines + subtle row striping) to match DAW-like reference.
+// - 2026-01-27_06: Piano roll now uses a persistent canvas instance and emits hit-test data scaffolding (no behavior change yet).
+// - 2026-01-27_07: Add piano-key hit zones on the keyboard rail (click/touch to audition notes).
+// - 2026-01-27_08: Add note hit-testing + selection highlight in piano roll (click to select; no dragging yet).
+// - 2026-01-27_09: Add draggable MIDI notes in piano roll (move time/pitch with quantize; updates STATE + redraw).
+// - 2026-01-27_10: Add piano-roll playhead overlay synced to Tone.Transport; resets on stop.
+// - 2026-01-27_11: Add playhead scrubbing (click/drag grid to seek; restarts playback from new position if playing).
+// - 2026-01-27_12: Add note resizing (drag right edge to adjust duration with quantize).
+// - 2026-01-27_13: Fix note resize sliding by preventing drag handler from activating when grabbing resize edge.
+// - 2026-01-27_14: Add note create (dblclick), delete (Del/Backspace), and audition on select/create.
+// - 2026-01-27_15: Note drawing now snaps to 1/4 notes (creation quantize); move/resize still use finer grid.
+// - 2026-01-27_16: Add Paint Mode with Draw Track selector; click-drag paints notes snapped to 1/4 grid with audition.
+// - 2026-01-27_17: Double-click note creation now uses Draw Track/Length; Paint Mode UI removed from workflow.
+// - 2026-01-28_01: Add top ruler/scrub lane; scrubbing now only works in ruler (prevents playhead moving while drawing notes).
+// - 2026-01-28_03: Add Logic-style loop selection lane in ruler; scrubbing restricted to top lane; playback loops selected region.
+// - 2026-01-28_04: Ruler split into Bar lane (loop highlight drag) + Scrub lane (playhead drag) with Logic-style loop playback.
+// - 2026-01-28_04: Add separate bar lane + scrub lane; bar-lane click/drag selects loop; playback loops selected region (Logic-style).
+// - 2026-01-28_04a: Loop selection snap changed from whole bars to 1/16 notes (0.25 beats) for fine loop ranges; no other behavior changes.
+// - 2026-01-29_01: Loop selection minimum length changed from 1 bar to 1/16 note; drag now allows 1/16–full range.
+// - 2026-01-29_02: Regenerate now respects loop selection: only regenerates events inside selected loop region, per-track and respecting Locks. No loop = full regen (still respects Locks).
+// - 2026-01-29_03: Add Mix controls (Mute/Solo/Gain per track) with proper solo logic; wired into synth preview via per-track Volume busses.
+// - 2026-01-29_04: Fix Mix UI mounting by locating Parts card via header text; ensure Mix section injects + binds reliably.
+// - 2026-01-29_05: Move mix controls into each Part section (header M/S + gain slider); remove standalone Mix section UI.
+// - 2026-01-29_06: Fix MIDI export: “Combined” now always exports all 3 parts (Chords/Bass/Melody); stems always exports 3 files regardless of Locks.
+// - 2026-01-29_07: Fix regen note stacking: remove events intersecting regen range (timing-padded) + de-dupe per track (prevents overlaid notes + export duplicates).
+// - 2026-01-29_08: Fix loop regen targeting: regenerate/clamp events to the exact loop beat range (not whole bars), trimming notes to selection so mid-bar loops regen correctly.
+// - 2026-01-29_10: Fix loop regen deleting last notes before loop by guarding padded cleanup so it can’t remove events fully before/after strict loop window.
+// - 2026-01-29_10: Fix loop regen boundary trim artifacts by dropping post-loop tails and preventing padded cleanup from deleting trimmed pre-loop notes.
+// - 2026-01-30_01: Lower default Chords mix gain (STATE.mix) so chords sit lower on first load.
+
+
+// 
+// PATCHING RULES (how we work together):
+// 1) Prefer “replace entire PATCH block” over line numbers.
+// 2) Only edit code between:
+//      // === PATCH: name ===
+//    and
+//      // === END PATCH: name ===
+//    (or SECTION blocks similarly).
+// 3) When adding a new feature, we add a NEW PATCH block (don’t wedge into existing ones).
+// 4) Every edit bumps BUILD_ID and adds a 1-line CHANGELOG entry.
+// 5) State lives in STATE. UI reads/writes via UI module. Playback uses STATE.synths.
+//
+// PATCH INDEX (search markers exactly):
+// - SECTION: app-config        => global constants, flags, limits
+// - PATCH: rng                => seeded random + helpers (choice/clamp/round2)
+// - PATCH: music-theory       => scales/modes/chords + naming helpers
+// - PATCH: progression        => degree-based progression selection
+// - PATCH: voicing-patterns   => voicings + rhythm/pattern generators
+// - PATCH: timing             => swing/humanize transforms
+// - SECTION: app-state         => STATE object + shared helpers (mergeEvents)
+// - PATCH: generation-core    => generate/regenerate + locks + summary build
+// - PATCH: midi-export        => @tonejs/midi export + downloads
+// - PATCH: audio-preview      => Tone.js synth preview + scheduling + stop
+// - SECTION: ui-bindings      => DOM refs, events, render, parameter gather
+// - SECTION: dev-tools        => optional assertions/sanity checks
+// - SECTION: app-init         => init() entry point only
+//
+// NAMING CONVENTION (for future blocks):
+// - PATCH: <domain>-<feature>  e.g. PATCH: sampler-playback, PATCH: drum-grooves, PATCH: midi-import
+// - SECTION: <domain>          e.g. SECTION: ui-layout, SECTION: storage
+// ============================================================
+
+
+
+
+    // ============================================================
+    // SECTION: app-config
+    // ============================================================
+    const APP = {
+      DEV: false, // set true for extra checks/logs
+      PPQ: 480,
+      BEATS_PER_BAR: 4,
+      TRACKS: ["Chords","Bass","Melody"],
+      LIMITS: {
+        bpmMin: 40,
+        bpmMax: 220,
+        maxEventListLines: 260
+      }
+    };
+
+    // ============================================================
+    // === PATCH: rng ===
+    // ============================================================
+    function xmur3(str) {
+      let h = 1779033703 ^ str.length;
+      for (let i = 0; i < str.length; i++) {
+        h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+      }
+      return function() {
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        h ^= (h >>> 16);
+        return h >>> 0;
+      };
+    }
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+    }
+    function makeRng(seedStr){
+      const seed = (seedStr && seedStr.trim().length) ? seedStr.trim() : String(Date.now());
+      const h = xmur3(seed);
+      return { rand: mulberry32(h()), seed };
+    }
+    function choice(rng, arr){ return arr[Math.floor(rng() * arr.length)]; }
+    function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+    function round2(v){ return Math.round(v * 100) / 100; }
+    // === END PATCH: rng ===
+
+    // ============================================================
+    // === PATCH: music-theory ===
+    // ============================================================
+    const NOTE_TO_SEMI = { "C":0, "C#":1, "D":2, "D#":3, "E":4, "F":5, "F#":6, "G":7, "G#":8, "A":9, "A#":10, "B":11 };
+    const SEMI_TO_NOTE = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+    const MODE_INTERVALS = {
+      ionian:        [0,2,4,5,7,9,11],
+      aeolian:       [0,2,3,5,7,8,10],
+      dorian:        [0,2,3,5,7,9,10],
+      phrygian:      [0,1,3,5,7,8,10],
+      lydian:        [0,2,4,6,7,9,11],
+      mixolydian:    [0,2,4,5,7,9,10],
+      harmonic_minor:[0,2,3,5,7,8,11],
+    };
+
+    function buildScale(rootSemi, mode){
+      const ints = MODE_INTERVALS[mode] || MODE_INTERVALS.ionian;
+      return ints.map(i => (rootSemi + i) % 12);
+    }
+    function degreePc(scaleSemis, degree1to7){
+      return scaleSemis[(degree1to7 - 1) % 7];
+    }
+    function chordFromDegree(scaleSemis, degree1to7, size=3){
+      const d = (degree1to7 - 1) % 7;
+      const third = (d + 2) % 7;
+      const fifth = (d + 4) % 7;
+      const seventh = (d + 6) % 7;
+      const triad = [scaleSemis[d], scaleSemis[third], scaleSemis[fifth]];
+      if (size <= 3) return triad;
+      return [scaleSemis[d], scaleSemis[third], scaleSemis[fifth], scaleSemis[seventh]];
+    }
+
+    function getParallelMode(mode){
+      const majorFamily = new Set(["ionian","lydian","mixolydian"]);
+      const minorFamily = new Set(["aeolian","dorian","phrygian","harmonic_minor"]);
+      if (majorFamily.has(mode)) return "aeolian";
+      if (minorFamily.has(mode)) return "ionian";
+      return "aeolian";
+    }
+    function modeFamily(mode){
+      const majorFamily = new Set(["ionian","lydian","mixolydian"]);
+      const minorFamily = new Set(["aeolian","dorian","phrygian","harmonic_minor"]);
+      if (majorFamily.has(mode)) return "major";
+      if (minorFamily.has(mode)) return "minor";
+      return "major";
+    }
+
+    function prettyChordNameFromMidiNotes(midiNotes){
+      const pcs = midiNotes.map(n=>((n%12)+12)%12);
+      const root = pcs.slice().sort((a,b)=>a-b)[0];
+      const rel = pcs.map(pc => (pc - root + 12) % 12).sort((a,b)=>a-b);
+      const has3m = rel.includes(3), has3M = rel.includes(4);
+      const has5d = rel.includes(6), has5P = rel.includes(7);
+      const has7m = rel.includes(10), has7M = rel.includes(11);
+      let name = SEMI_TO_NOTE[root];
+      if (has5d && has3m) name += "dim";
+      else if (has3m) name += "m";
+      if (has7m) name += "7";
+      else if (has7M) name += "maj7";
+      return name;
+    }
+    // === END PATCH: music-theory ===
+
+    // ============================================================
+    // === PATCH: progression ===
+    // ============================================================
+    function generateProgression({mode, mood, bars, rng}){
+      const fam = modeFamily(mode);
+
+      const TABLE = {
+        major: {
+          uplifting:   [[1,5,6,4],[1,4,5,1],[6,4,1,5],[1,2,5,1]],
+          melancholic: [[6,4,1,5],[1,6,4,5],[4,1,5,6]],
+          dark:        [[6,5,4,5],[1,3,6,4],[2,5,1,6]],
+          tense:       [[2,5,1,5],[1,7,6,5],[4,5,2,5]],
+          progressive: [[1,5,6,4],[1,6,3,7],[1,7,6,4],[6,7,1,5]]
+        },
+        minor: {
+          uplifting:   [[1,6,3,7],[1,4,7,3],[6,7,1,4]],
+          melancholic: [[1,6,3,7],[1,4,6,5],[1,7,6,4]],
+          dark:        [[1,7,6,7],[1,6,7,1],[6,5,1,7]],
+          tense:       [[1,2,5,1],[1,7,2,5],[4,5,1,7]],
+          progressive: [[1,6,3,7],[1,7,6,4],[6,4,1,5],[1,5,6,4]]
+        }
+      };
+
+      const pool = (TABLE[fam] && TABLE[fam][mood]) ? TABLE[fam][mood] : TABLE[fam].uplifting;
+      const base = choice(rng, pool).slice();
+
+      const prog = [];
+      while (prog.length < bars){
+        let chunk = base.slice();
+        if (rng() < 0.30){
+          chunk[chunk.length - 1] = (fam === "major") ? choice(rng, [1,5]) : choice(rng, [1,5,7]);
+        }
+        for (const d of chunk){
+          prog.push(d);
+          if (prog.length >= bars) break;
+        }
+      }
+      return prog;
+    }
+    // === END PATCH: progression ===
+
+    // ============================================================
+    // === PATCH: voicing-patterns ===
+    // ============================================================
+    function semiToMidiNear(semi, targetMidi){
+      const base = targetMidi - (targetMidi % 12) + semi;
+      const candidates = [base - 12, base, base + 12];
+      candidates.sort((a,b)=>Math.abs(a-targetMidi)-Math.abs(b-targetMidi));
+      return candidates[0];
+    }
+
+    function buildVoicing(chordPcs, prevVoicing, rng, chordComplexity, register){
+      const n = chordPcs.length;
+      const targetCenter =
+        (register === "low") ? 56 :
+        (register === "high") ? 68 : 62;
+
+      const lowLimit = (register === "low") ? 44 : (register === "high") ? 56 : 48;
+      const highLimit = (register === "low") ? 72 : (register === "high") ? 84 : 78;
+
+      const inversions = [];
+      for (let inv=0; inv<n; inv++){
+        const invPcs = [];
+        for (let i=0; i<n; i++) invPcs.push(chordPcs[(i+inv)%n]);
+        inversions.push(invPcs);
+      }
+
+      let best = null;
+
+      for (const invPcs of inversions){
+        const rootMidi = semiToMidiNear(invPcs[0], targetCenter);
+        let midiNotes = [rootMidi];
+        for (let i=1; i<invPcs.length; i++){
+          let note = semiToMidiNear(invPcs[i], midiNotes[i-1] + 4);
+          while (note <= midiNotes[i-1]) note += 12;
+          midiNotes.push(note);
+        }
+
+        if (chordComplexity !== "simple" && rng() < (chordComplexity === "spicy" ? 0.55 : 0.35)){
+          if (midiNotes.length >= 3) midiNotes[1] -= 12;
+          midiNotes.sort((a,b)=>a-b);
+        }
+
+        while (Math.min(...midiNotes) < lowLimit) midiNotes = midiNotes.map(n=>n+12);
+        while (Math.max(...midiNotes) > highLimit) midiNotes = midiNotes.map(n=>n-12);
+
+        let score = 0;
+        if (prevVoicing && prevVoicing.length){
+          const a = prevVoicing.slice().sort((x,y)=>x-y);
+          const b = midiNotes.slice().sort((x,y)=>x-y);
+          const m = Math.min(a.length, b.length);
+          for (let i=0;i<m;i++) score += Math.abs(b[i]-a[i]);
+          score += Math.abs(b.length - a.length) * 6;
+        } else {
+          score = Math.abs((midiNotes.reduce((s,n)=>s+n,0)/midiNotes.length) - targetCenter);
+        }
+        score += rng() * 2.5;
+
+        if (!best || score < best.score) best = { notes: midiNotes, score };
+      }
+      return best.notes;
+    }
+
+    function chordRhythm(chordComplexity, rng, style){
+      if (style === "block" || style === "strum" || style.startsWith("arp")){
+        return [{beat:0, dur:4}];
+      }
+      if (chordComplexity === "simple"){
+        return [{beat:0, dur:4}];
+      }
+      if (chordComplexity === "medium"){
+        return rng() < 0.5
+          ? [{beat:0, dur:2},{beat:2, dur:2}]
+          : [{beat:0, dur:1.5},{beat:1.5, dur:1.0},{beat:2.5, dur:1.5}];
+      }
+      const patterns = [
+        [{beat:0, dur:1},{beat:1, dur:1},{beat:2, dur:1},{beat:3, dur:1}],
+        [{beat:0, dur:1.5},{beat:1.5, dur:.5},{beat:2, dur:1.0},{beat:3, dur:1.0}],
+        [{beat:0, dur:.5},{beat:.5, dur:1.0},{beat:2, dur:.5},{beat:2.5, dur:1.0},{beat:3.5, dur:.5}]
+      ];
+      return choice(rng, patterns);
+    }
+
+    function bassPattern(bassComplexity, rng, style){
+      if (bassComplexity === "simple"){
+        if (style === "octave") return [{beat:0,dur:2,type:"root"},{beat:2,dur:2,type:"oct"}];
+        return [{beat:0, dur:4, type:"root"}];
+      }
+
+      if (bassComplexity === "medium"){
+        if (style === "groove"){
+          return rng() < 0.5
+            ? [{beat:0,dur:1.5,type:"root"},{beat:1.5,dur:.5,type:"pass"},{beat:2,dur:1,type:"root"},{beat:3,dur:1,type:"fifth"}]
+            : [{beat:0,dur:1,type:"root"},{beat:1,dur:1,type:"fifth"},{beat:2.5,dur:.5,type:"approach"},{beat:3,dur:1,type:"root"}];
+        }
+        if (style === "octave"){
+          return [{beat:0,dur:1,type:"root"},{beat:1,dur:1,type:"oct"},{beat:2,dur:1,type:"root"},{beat:3,dur:1,type:"oct"}];
+        }
+        return rng() < 0.5
+          ? [{beat:0, dur:2, type:"root"},{beat:2, dur:2, type:"root"}]
+          : [{beat:0, dur:1.5, type:"root"},{beat:1.5, dur:.5, type:"fifth"},{beat:2, dur:2, type:"root"}];
+      }
+
+      const spicyRoot = [
+        [{beat:0,dur:1,type:"root"},{beat:1,dur:1,type:"fifth"},{beat:2,dur:1,type:"root"},{beat:3,dur:1,type:"approach"}],
+        [{beat:0,dur:1.5,type:"root"},{beat:1.5,dur:.5,type:"approach"},{beat:2,dur:1,type:"root"},{beat:3,dur:1,type:"fifth"}],
+        [{beat:0,dur:.5,type:"root"},{beat:.5,dur:.5,type:"pass"},{beat:1,dur:1,type:"fifth"},{beat:2,dur:1,type:"root"},{beat:3,dur:1,type:"oct"}],
+      ];
+      const spicyGroove = [
+        [{beat:0,dur:1,type:"root"},{beat:1.5,dur:.5,type:"pass"},{beat:2,dur:.5,type:"root"},{beat:2.5,dur:.5,type:"pass"},{beat:3,dur:1,type:"fifth"}],
+        [{beat:0,dur:.5,type:"root"},{beat:.5,dur:.5,type:"pass"},{beat:1.5,dur:.5,type:"fifth"},{beat:2,dur:1,type:"root"},{beat:3.5,dur:.5,type:"approach"}],
+      ];
+      const spicyOct = [
+        [{beat:0,dur:1,type:"root"},{beat:1,dur:1,type:"oct"},{beat:2,dur:1,type:"fifth"},{beat:3,dur:1,type:"oct"}],
+        [{beat:0,dur:.5,type:"root"},{beat:.5,dur:.5,type:"oct"},{beat:1,dur:1,type:"root"},{beat:2.5,dur:.5,type:"oct"},{beat:3,dur:1,type:"root"}],
+      ];
+      if (style === "groove") return choice(rng, spicyGroove);
+      if (style === "octave") return choice(rng, spicyOct);
+      return choice(rng, spicyRoot);
+    }
+
+    function melodyRhythm(melodyComplexity, rng){
+      if (melodyComplexity === "simple"){
+        return choice(rng, [
+          [{beat:0, dur:1},{beat:1, dur:1},{beat:2, dur:1},{beat:3, dur:1}],
+          [{beat:0, dur:2},{beat:2, dur:1},{beat:3, dur:1}],
+          [{beat:0, dur:1.5},{beat:1.5, dur:.5},{beat:2, dur:2}]
+        ]);
+      }
+      if (melodyComplexity === "medium"){
+        return choice(rng, [
+          [{beat:0, dur:.5},{beat:.5, dur:.5},{beat:1, dur:1},{beat:2, dur:.5},{beat:2.5, dur:.5},{beat:3, dur:1}],
+          [{beat:0, dur:1},{beat:1, dur:.5},{beat:1.5, dur:.5},{beat:2, dur:1.5},{beat:3.5, dur:.5}],
+          [{beat:0, dur:.5},{beat:.5, dur:1},{beat:1.5, dur:.5},{beat:2, dur:1},{beat:3, dur:1}]
+        ]);
+      }
+      return choice(rng, [
+        [{beat:0, dur:.5},{beat:.5, dur:.5},{beat:1, dur:.5},{beat:1.5, dur:.5},{beat:2, dur:.5},{beat:2.5, dur:.5},{beat:3, dur:.5},{beat:3.5, dur:.5}],
+        [{beat:0, dur:.5},{beat:.5, dur:1},{beat:1.5, dur:.5},{beat:2, dur:.5},{beat:2.5, dur:1},{beat:3.5, dur:.5}],
+        [{beat:0, dur:1},{beat:1, dur:.5},{beat:1.5, dur:.5},{beat:2, dur:.5},{beat:2.5, dur:.5},{beat:3, dur:1}]
+      ]);
+    }
+
+    function pickMelodyNote({scalePcs, chordPcs, prevMidi, targetMin, targetMax, rng, contour, preferChordTone=false}){
+      const chordTones = chordPcs.slice();
+      const scaleTones = scalePcs.slice();
+
+      const baseCandidates = preferChordTone ? chordTones : (rng() < 0.55 ? chordTones : scaleTones);
+      const pool = [];
+      const center = prevMidi ?? Math.floor((targetMin + targetMax)/2);
+
+      for (const pc of baseCandidates){
+        const midi = semiToMidiNear(pc, center);
+        for (const off of [-12, 0, 12]){
+          const n = midi + off;
+          if (n >= targetMin && n <= targetMax) pool.push(n);
+        }
+      }
+      if (!pool.length){
+        const fallbackPc = choice(rng, scaleTones);
+        return clamp(semiToMidiNear(fallbackPc, center), targetMin, targetMax);
+      }
+
+      let best = null;
+      for (const n of pool){
+        let s = 0;
+        if (prevMidi != null){
+          const d = Math.abs(n - prevMidi);
+          let stepBias, leapPenalty;
+          if (contour === "stepwise"){ stepBias = 0; leapPenalty = 1.25; }
+          else if (contour === "leapy"){ stepBias = 0.5; leapPenalty = 0.75; }
+          else { stepBias = 0.2; leapPenalty = 1.0; }
+
+          s += (d <= 2) ? 0 + stepBias
+             : (d <= 5) ? 1.5 * leapPenalty
+             : (d <= 9) ? 4.0 * leapPenalty
+             : 7.0 * leapPenalty;
+        }
+        const edge = Math.min(n - targetMin, targetMax - n);
+        s += (edge < 2) ? 2.5 : 0;
+        s += rng()*1.5;
+        if (!best || s < best.s) best = {n, s};
+      }
+      return best.n;
+    }
+    // === END PATCH: voicing-patterns ===
+
+    // ============================================================
+    // === PATCH: timing ===
+    // ============================================================
+    function applySwingAndHumanize(events, bpm, swingPct, humanizeMs, rng){
+      const swing = clamp(swingPct, 0, 60) / 100;
+      const ticksPerSecond = APP.PPQ * (bpm / 60);
+      const humanTicks = (humanizeMs / 1000) * ticksPerSecond;
+      const swingDelayTicks = swing * (APP.PPQ/2) * 0.5;
+
+      return events.map(ev => {
+        let t = ev.ticks;
+
+        const beats = t / APP.PPQ;
+        const two = beats * 2;
+        const isOnGrid = Math.abs(two - Math.round(two)) < 1e-9;
+        const isOff8 = isOnGrid && (Math.round(two) % 2 === 1);
+
+        if (isOff8) t += swingDelayTicks;
+        if (humanTicks > 0) t += (rng()*2 - 1) * humanTicks;
+
+        return {...ev, ticks: Math.max(0, Math.round(t))};
+      });
+    }
+    // === END PATCH: timing ===
+
+    // ============================================================
+    // SECTION: app-state
+    // ============================================================
+    const STATE = {
+      current: null,       // {summary, eventsAll, eventsByTrack, meta}
+      currentParams: null, // last gathered params used for current generation
+      synths: null
+    };
+
+
+
+
+// ============================================================
+// === PATCH: mix-state ===
+// ============================================================
+function ensureMixState(){
+  STATE.mix = STATE.mix || {};
+
+  // Default per-track mix offsets (dB) applied on first creation only.
+  // This is additive on top of the synth "baseDb" levels in ensureSynths().
+  const DEFAULT_GAIN_DB = {
+    Chords: -11,   // ✅ lower chords by default
+    Bass:    0,
+    Melody:  0
+  };
+
+  for (const t of APP.TRACKS){
+    if (!STATE.mix[t]){
+      STATE.mix[t] = {
+        mute: false,
+        solo: false,
+        gainDb: (Number.isFinite(DEFAULT_GAIN_DB[t]) ? DEFAULT_GAIN_DB[t] : 0)
+      };
+    } else {
+      // normalize
+      STATE.mix[t].mute = !!STATE.mix[t].mute;
+      STATE.mix[t].solo = !!STATE.mix[t].solo;
+      STATE.mix[t].gainDb = Number.isFinite(STATE.mix[t].gainDb) ? STATE.mix[t].gainDb : 0;
+    }
+  }
+  return STATE.mix;
+}
+
+function isSoloActive(){
+  ensureMixState();
+  return APP.TRACKS.some(t => STATE.mix[t].solo);
+}
+
+function isTrackAudible(track){
+  ensureMixState();
+  const m = STATE.mix[track];
+  const soloActive = isSoloActive();
+  // DAW-ish logic: mute always wins; solo gates when any solo is active
+  if (m.mute) return false;
+  if (soloActive) return !!m.solo;
+  return true;
+}
+// === END PATCH: mix-state ===
+
+
+
+
+    function mergeEvents(byTrack){
+      return [...(byTrack.Chords||[]), ...(byTrack.Bass||[]), ...(byTrack.Melody||[])];
+    }
+
+
+
+// ============================================================
+// === PATCH: event-dedupe ===
+// ============================================================
+function dedupeEvents(list){
+  // Removes exact duplicates: same track + ticks + midi + durationTicks
+  const out = [];
+  const seen = new Set();
+  for (const e of (list || [])){
+    const k = `${e.track}|${e.ticks}|${e.midi}|${e.durationTicks}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e);
+  }
+  return out;
+}
+// === END PATCH: event-dedupe ===
+
+
+
+
+// ============================================================
+// === PATCH: event-cleanup ===
+// ============================================================
+function computeTimingPadTicks({ bpm, swingPct, humanizeMs }){
+  // Max possible drift introduced by applySwingAndHumanize()
+  const swing = clamp(swingPct, 0, 60) / 100;
+  const ticksPerSecond = APP.PPQ * (bpm / 60);
+  const humanTicks = (humanizeMs / 1000) * ticksPerSecond;
+
+  // same formula used in applySwingAndHumanize
+  const swingDelayTicks = swing * (APP.PPQ/2) * 0.5;
+
+  // extra safety margin (+4 ticks) to handle rounding
+  return Math.ceil(Math.abs(humanTicks) + Math.abs(swingDelayTicks) + 4);
+}
+
+function removeEventsIntersectingTickRange(list, startTicks, endTicks){
+  // Remove notes whose time-span intersects [startTicks, endTicks)
+  // (handles humanize/swing shifting note starts slightly outside the selection)
+  return (list || []).filter(e => {
+    const a = e.ticks;
+    const b = e.ticks + Math.max(1, e.durationTicks || 1);
+    const intersects = (b > startTicks) && (a < endTicks);
+    return !intersects;
+  });
+}
+
+function dedupeEvents(list){
+  // Exact de-dupe: same ticks+midi+durationTicks+track
+  const seen = new Set();
+  const out = [];
+  for (const e of (list || [])){
+    const k = `${e.track}|${e.ticks}|${e.midi}|${e.durationTicks}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e);
+  }
+  return out;
+}
+// === END PATCH: event-cleanup ===
+
+
+
+
+
+
+    // ============================================================
+// === PATCH: generation-core ===
+// ============================================================
+function buildChordPcsForBar({ rootPc, mode, degree, rng, mixturePct, mixtureDir }){
+  const baseScale = buildScale(rootPc, mode);
+  const fam = modeFamily(mode);
+  const parallelMode = getParallelMode(mode);
+  const parallelScale = buildScale(rootPc, parallelMode);
+
+  const mixProb = clamp(mixturePct, 0, 100) / 100;
+  let doBorrow = rng() < mixProb;
+
+  if (mixtureDir === "borrow_minor" && fam === "minor") doBorrow = false;
+  if (mixtureDir === "borrow_major" && fam === "major") doBorrow = false;
+
+  const useScale = doBorrow ? parallelScale : baseScale;
+  return { baseScale, parallelScale, usedScale: useScale, doBorrow };
+}
+
+function chooseChordSize(extensions, rng, chordComplexity){
+  if (extensions === "none") return 3;
+  if (extensions === "some"){
+    if (chordComplexity === "simple") return (rng() < 0.10) ? 4 : 3;
+    if (chordComplexity === "medium") return (rng() < 0.35) ? 4 : 3;
+    return (rng() < 0.55) ? 4 : 3;
+  }
+  if (chordComplexity === "simple") return (rng() < 0.25) ? 4 : 3;
+  if (chordComplexity === "medium") return (rng() < 0.55) ? 4 : 3;
+  return (rng() < 0.75) ? 4 : 3;
+}
+
+function addColorToneIfWanted(chordMidiNotes, scalePcs, rng, extensions){
+  if (extensions !== "more") return chordMidiNotes;
+  if (rng() > 0.35) return chordMidiNotes;
+
+  const pcs = chordMidiNotes.map(n=>((n%12)+12)%12);
+  const rootPc = pcs[0];
+  const ninthPc = scalePcs.find(pc => (pc - rootPc + 12) % 12 === 2) ?? null;
+  if (ninthPc == null) return chordMidiNotes;
+
+  const top = Math.max(...chordMidiNotes);
+  let n = semiToMidiNear(ninthPc, top + 2);
+  while (n <= top) n += 12;
+
+  const out = chordMidiNotes.slice();
+  out.push(n);
+  out.sort((a,b)=>a-b);
+  return out;
+}
+
+function makeChordEventsForBar({
+  barIndex, chordMidiNotes, chordComplexity, chordStyle, chordTightMs, rng, bpm
+}){
+  const barStart = barIndex * APP.BEATS_PER_BAR * APP.PPQ;
+  const rhythm = chordRhythm(chordComplexity, rng, chordStyle);
+  const events = [];
+
+  const tightTicks = (chordTightMs/1000) * (APP.PPQ * (bpm/60));
+
+  for (const hit of rhythm){
+    const start = barStart + Math.round(hit.beat * APP.PPQ);
+    const dur = Math.round(hit.dur * APP.PPQ);
+
+    if (chordStyle === "block" || chordStyle === "comp"){
+      for (const note of chordMidiNotes){
+        events.push({track:"Chords", midi:note, ticks:start, durationTicks:dur, velocity:0.72});
+      }
+    } else if (chordStyle === "strum"){
+      const sorted = chordMidiNotes.slice().sort((a,b)=>a-b);
+      const step = (sorted.length > 1) ? (tightTicks / (sorted.length-1)) : 0;
+      for (let i=0;i<sorted.length;i++){
+        events.push({
+          track:"Chords",
+          midi: sorted[i],
+          ticks: Math.round(start + i*step),
+          durationTicks: Math.max(1, Math.round(dur - i*step)),
+          velocity: clamp(0.70 + (rng()*0.06-0.03), 0.45, 0.95)
+        });
+      }
+    } else if (chordStyle === "arp8" || chordStyle === "arp16"){
+      const stepBeats = (chordStyle === "arp8") ? 0.5 : 0.25;
+      const steps = Math.max(1, Math.round(hit.dur / stepBeats));
+      const order = chordMidiNotes.slice().sort((a,b)=>a-b);
+
+      for (let s=0; s<steps; s++){
+        const n = order[s % order.length];
+        const st = start + Math.round(s * stepBeats * APP.PPQ);
+        const du = Math.round(stepBeats * APP.PPQ);
+        events.push({
+          track:"Chords",
+          midi: n,
+          ticks: Math.round(st + (rng()*tightTicks*0.25)),
+          durationTicks: Math.max(1, du),
+          velocity: clamp(0.68 + (rng()*0.08-0.04), 0.45, 0.95)
+        });
+      }
+    }
+  }
+  return events;
+}
+
+function makeBassEventsForBar({ barIndex, bassComplexity, bassStyle, scalePcs, chordPcs, rng }){
+  const barStart = barIndex * APP.BEATS_PER_BAR * APP.PPQ;
+  const rootPc = chordPcs[0];
+  const fifthPc = chordPcs[2] ?? chordPcs[0];
+
+  const scaleIndex = (pc)=> scalePcs.indexOf(pc);
+  const stepPc = (fromPc, dir)=>{
+    const idx = scaleIndex(fromPc);
+    if (idx < 0) return fromPc;
+    const next = (idx + dir + 7) % 7;
+    return scalePcs[next];
+  };
+
+  const pat = bassPattern(bassComplexity, rng, bassStyle);
+  const events = [];
+
+  const bassBase = 36;
+  for (const hit of pat){
+    const start = barStart + Math.round(hit.beat * APP.PPQ);
+    const dur = Math.round(hit.dur * APP.PPQ);
+
+    let pc = rootPc;
+
+    if (hit.type === "fifth") pc = fifthPc;
+    else if (hit.type === "oct") pc = rootPc;
+    else if (hit.type === "approach"){
+      pc = stepPc(rootPc, -1);
+    } else if (hit.type === "pass"){
+      pc = (rng() < 0.5) ? stepPc(rootPc, +1) : stepPc(rootPc, -1);
+    }
+
+    let midi = semiToMidiNear(pc, bassBase);
+    if (midi > 48) midi -= 12;
+    if (midi < 28) midi += 12;
+    if (hit.type === "oct") midi += 12;
+
+    events.push({
+      track:"Bass",
+      midi,
+      ticks: start,
+      durationTicks: Math.max(1, dur),
+      velocity: clamp(0.78 + (rng()*0.06-0.03), 0.50, 0.95)
+    });
+  }
+  return events;
+}
+
+function makeMelodyEventsForBar({ barIndex, melodyComplexity, contour, scalePcs, chordPcs, rng, motif }){
+  const barStart = barIndex * APP.BEATS_PER_BAR * APP.PPQ;
+  const rhythm = (motif && motif.rhythm) ? motif.rhythm : melodyRhythm(melodyComplexity, rng);
+  const strongBeats = new Set([0,2]);
+
+  const events = [];
+  let prev = (motif && motif.prevMidi != null) ? motif.prevMidi : null;
+
+  let notes = [];
+  if (motif && motif.notes && motif.notes.length === rhythm.length){
+    notes = motif.notes.slice();
+    if (motif.allowVariation && rng() < 0.75){
+      const idx = Math.floor(rng() * notes.length);
+      const preferChord = rng() < 0.5;
+      notes[idx] = pickMelodyNote({
+        scalePcs, chordPcs, prevMidi: (idx>0 ? notes[idx-1] : prev),
+        targetMin: 60, targetMax: 76, rng, contour,
+        preferChordTone: preferChord
+      });
+    }
+  } else {
+    for (const step of rhythm){
+      const preferChord = strongBeats.has(Math.floor(step.beat+1e-9)) || rng() < 0.30;
+      const n = pickMelodyNote({
+        scalePcs, chordPcs, prevMidi: prev, targetMin: 60, targetMax: 76, rng, contour,
+        preferChordTone: preferChord
+      });
+      notes.push(n);
+      prev = n;
+    }
+  }
+
+  for (let i=0; i<rhythm.length; i++){
+    const step = rhythm[i];
+    const start = barStart + Math.round(step.beat * APP.PPQ);
+    const dur = Math.round(step.dur * APP.PPQ);
+    const velBase = (melodyComplexity === "simple") ? 0.68 : (melodyComplexity === "medium") ? 0.70 : 0.72;
+    const accent = (Math.abs(step.beat - Math.round(step.beat)) < 1e-9) ? 0.06 : 0;
+    events.push({
+      track:"Melody",
+      midi: notes[i],
+      ticks: start,
+      durationTicks: Math.max(1, dur),
+      velocity: clamp(velBase + accent + (rng()*0.06 - 0.03), 0.45, 0.98)
+    });
+  }
+
+  return { events, motifOut: { rhythm, notes, prevMidi: notes[notes.length-1] } };
+}
+
+function generateOrRegen({regen=false}={}){
+  UI.setStatus(regen ? "Regenerating…" : "Generating…");
+
+  const p = UI.gatherParams();
+  STATE.currentParams = p;
+
+  // match existing behavior: regen without seed => new randomness
+  if (regen && (!p.seedStr || !p.seedStr.trim().length)){
+    p.seedStr = String(Date.now());
+  }
+
+  const { rand, seed } = makeRng(p.seedStr);
+  const rng = rand;
+
+  // ✅ NEW: if regenerating and a loop range is active, regen only inside loop (per unlocked tracks)
+  if (regen && STATE.current && typeof regenWithinLoopIfActive === "function"){
+    const did = regenWithinLoopIfActive({ p, rng, seed });
+    if (did){
+      UI.renderOutput();
+      UI.setStatus("Regenerated (Loop) ✓");
+      UI.uiPlayState(false);
+      UI.ui.btnPlay.disabled = false;
+      UI.ui.btnExport.disabled = false;
+      if (APP.DEV) DEV.assertSaneState();
+      return;
+    }
+  }
+
+  const rootPc = NOTE_TO_SEMI[p.keyName];
+  const parallelMode = getParallelMode(p.mode);
+
+  // init scales (kept for clarity; also ensures modes exist)
+  buildScale(rootPc, p.mode);
+  buildScale(rootPc, parallelMode);
+
+  let progressionDegrees = null;
+  let perBarBorrowFlags = null;
+  let perBarUsedScalePcs = null;
+
+  const wantLockChords = p.lockChords && STATE.current && STATE.current.meta && STATE.current.meta.progressionDegrees;
+  if (wantLockChords){
+    progressionDegrees = STATE.current.meta.progressionDegrees.slice();
+    perBarBorrowFlags = STATE.current.meta.perBarBorrowFlags.slice();
+    perBarUsedScalePcs = STATE.current.meta.perBarUsedScalePcs.map(s=>s.slice());
+  } else {
+    progressionDegrees = generateProgression({mode:p.mode, mood:p.mood, bars:p.bars, rng});
+    perBarBorrowFlags = [];
+    perBarUsedScalePcs = [];
+    for (let bar=0; bar<p.bars; bar++){
+      const degree = progressionDegrees[bar];
+      const mix = buildChordPcsForBar({
+        rootPc, mode:p.mode, degree, rng,
+        mixturePct:p.mixturePct, mixtureDir:p.mixtureDir
+      });
+      perBarBorrowFlags.push(mix.doBorrow);
+      perBarUsedScalePcs.push(mix.usedScale.slice());
+    }
+  }
+
+  const byTrack = { Chords: [], Bass: [], Melody: [] };
+
+  // CHORDS
+  if (p.lockChords && STATE.current && STATE.current.eventsByTrack){
+    byTrack.Chords = STATE.current.eventsByTrack.Chords.slice();
+  } else {
+    let prevVoicing = null;
+
+    for (let bar=0; bar<p.bars; bar++){
+      const degree = progressionDegrees[bar];
+      const usedScale = perBarUsedScalePcs[bar];
+      const chordSize = chooseChordSize(p.extensions, rng, p.chordComplexity);
+
+      let chordPcs = chordFromDegree(usedScale, degree, chordSize);
+      let chordMidi = buildVoicing(chordPcs, prevVoicing, rng, p.chordComplexity, p.chordRegister);
+      chordMidi = addColorToneIfWanted(chordMidi, usedScale, rng, p.extensions);
+
+      prevVoicing = chordMidi;
+
+      byTrack.Chords.push(...makeChordEventsForBar({
+        barIndex: bar,
+        chordMidiNotes: chordMidi,
+        chordComplexity: p.chordComplexity,
+        chordStyle: p.chordStyle,
+        chordTightMs: p.chordTightMs,
+        rng,
+        bpm: p.bpm
+      }));
+    }
+  }
+
+  // BASS
+  if (p.lockBass && STATE.current && STATE.current.eventsByTrack){
+    byTrack.Bass = STATE.current.eventsByTrack.Bass.slice();
+  } else {
+    for (let bar=0; bar<p.bars; bar++){
+      const degree = progressionDegrees[bar];
+      const usedScale = perBarUsedScalePcs[bar];
+      const chordPcs = chordFromDegree(usedScale, degree, 3);
+
+      byTrack.Bass.push(...makeBassEventsForBar({
+        barIndex: bar,
+        bassComplexity: p.bassComplexity,
+        bassStyle: p.bassStyle,
+        scalePcs: usedScale,
+        chordPcs,
+        rng
+      }));
+    }
+  }
+
+  // MELODY
+  if (p.lockMelody && STATE.current && STATE.current.eventsByTrack){
+    byTrack.Melody = STATE.current.eventsByTrack.Melody.slice();
+  } else {
+    let motif = null;
+    for (let bar=0; bar<p.bars; bar++){
+      const degree = progressionDegrees[bar];
+      const usedScale = perBarUsedScalePcs[bar];
+      const chordPcs = chordFromDegree(usedScale, degree, 3);
+
+      const phraseStart = (bar % 2 === 0);
+      if (phraseStart){
+        motif = { rhythm: melodyRhythm(p.melodyComplexity, rng), notes:null, prevMidi: (motif && motif.prevMidi) ? motif.prevMidi : null };
+      }
+
+      const makeNewNotes = phraseStart || !motif.notes;
+      const res = makeMelodyEventsForBar({
+        barIndex: bar,
+        melodyComplexity: p.melodyComplexity,
+        contour: p.melodyContour,
+        scalePcs: usedScale,
+        chordPcs,
+        rng,
+        motif: makeNewNotes ? { rhythm: motif.rhythm, notes:null, prevMidi: motif.prevMidi, allowVariation:false }
+                           : { rhythm: motif.rhythm, notes: motif.notes, prevMidi: motif.prevMidi, allowVariation:true }
+      });
+
+      byTrack.Melody.push(...res.events);
+      if (makeNewNotes){
+        motif.notes = res.motifOut.notes.slice();
+      }
+      motif.prevMidi = res.motifOut.prevMidi;
+    }
+  }
+
+  // Timing
+  const all = mergeEvents(byTrack);
+  const all2 = applySwingAndHumanize(all, p.bpm, p.swingPct, p.humanizeMs, rng)
+    .map(e => ({...e, durationTicks: Math.max(1, Math.round(e.durationTicks))}));
+
+  const byTrack2 = { Chords: [], Bass: [], Melody: [] };
+  for (const e of all2){
+    if (byTrack2[e.track]) byTrack2[e.track].push(e);
+  }
+
+  // ✅ de-dupe per track (prevents stacked notes after regen/export)
+for (const t of APP.TRACKS){
+  byTrack2[t] = dedupeEvents(byTrack2[t]).sort((a,b)=>a.ticks-b.ticks || a.midi-b.midi);
+}
+
+
+  // Progression display (approx)
+  const chordNames = [];
+  if (byTrack2.Chords.length){
+    const tightWin = Math.round((p.chordTightMs/1000) * (APP.PPQ * (p.bpm/60))) + 3;
+    for (let bar=0; bar<p.bars; bar++){
+      const barStart = bar * APP.BEATS_PER_BAR * APP.PPQ;
+      const hits = byTrack2.Chords.filter(ev => Math.abs(ev.ticks - barStart) <= tightWin);
+      const mids = [...new Set(hits.map(h=>h.midi))].sort((a,b)=>a-b);
+      chordNames.push(mids.length ? prettyChordNameFromMidiNotes(mids) : "—");
+    }
+  }
+
+  const fam = modeFamily(p.mode);
+  const summary = {
+    seed,
+    key: p.keyName,
+    mode: p.mode,
+    family: fam,
+    mood: p.mood,
+    bpm: p.bpm,
+    bars: p.bars,
+    mixture: p.mixturePct + "%",
+    mixtureDir: p.mixtureDir,
+    extensions: p.extensions,
+    chord: `${p.chordComplexity} • ${p.chordStyle}`,
+    bass: `${p.bassComplexity} • ${p.bassStyle}`,
+    melody: `${p.melodyComplexity} • ${p.melodyContour}`,
+    progression: chordNames.join(" | ")
+  };
+
+  STATE.current = {
+    summary,
+    eventsAll: all2,
+    eventsByTrack: byTrack2,
+    meta: {
+      progressionDegrees,
+      perBarBorrowFlags,
+      perBarUsedScalePcs
+    }
+  };
+
+  UI.renderOutput();
+  UI.setStatus("Generated ✓");
+  UI.uiPlayState(false);
+  UI.ui.btnPlay.disabled = false;
+  UI.ui.btnExport.disabled = false;
+
+  if (APP.DEV) DEV.assertSaneState();
+}
+// === END PATCH: generation-core ===
+
+
+
+// ============================================================
+// === PATCH: regen-loop-region ===
+// ============================================================
+
+function getActiveLoopBeatRangeOrNull(totalBeats){
+  const ok =
+    STATE.ui &&
+    Number.isFinite(STATE.ui.loopStartBeat) &&
+    Number.isFinite(STATE.ui.loopEndBeat) &&
+    Math.abs(STATE.ui.loopEndBeat - STATE.ui.loopStartBeat) > 1e-6;
+
+  if (!ok) return null;
+
+  const a = clamp(Math.min(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat), 0, totalBeats);
+  const b = clamp(Math.max(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat), 0, totalBeats);
+
+  if (!(b > a)) return null;
+  return { startBeat: a, endBeat: b };
+}
+
+function barsOverlappingBeatRange({startBeat, endBeat, bars}){
+  const out = [];
+  const beatsPerBar = APP.BEATS_PER_BAR;
+
+  for (let bar=0; bar<bars; bar++){
+    const barA = bar * beatsPerBar;
+    const barB = barA + beatsPerBar;
+    const overlaps = (endBeat > barA) && (startBeat < barB);
+    if (overlaps) out.push(bar);
+  }
+  return out;
+}
+
+function findLastMelodyMidiBeforeTick(melodyEvents, tick){
+  const evs = (melodyEvents || []).slice().sort((a,b)=>a.ticks-b.ticks);
+  let last = null;
+  for (const e of evs){
+    if (e.ticks < tick) last = e;
+    else break;
+  }
+  return last ? last.midi : null;
+}
+
+function approxPrevChordVoicingForBar({barIndex, chordsEvents, bpm, chordTightMs}){
+  const prevBar = Math.max(0, barIndex - 1);
+  const barStart = prevBar * APP.BEATS_PER_BAR * APP.PPQ;
+
+  const tightWin = Math.round((chordTightMs/1000) * (APP.PPQ * (bpm/60))) + 3;
+  const hits = (chordsEvents || []).filter(ev => Math.abs(ev.ticks - barStart) <= tightWin);
+  const mids = [...new Set(hits.map(h=>h.midi))].sort((a,b)=>a-b);
+  return mids.length ? mids : null;
+}
+
+/**
+ * Loop punch-in trimming rules:
+ * - Notes fully inside loop: removed (regen replaces them)
+ * - Notes starting BEFORE loop and overlapping into it: keep LEFT side only (trim end to loopStart)
+ * - Notes starting INSIDE loop and extending past loop end: DROP entirely (prevents post-loop tail artifacts)
+ * - Notes spanning across the entire loop: keep LEFT side only (trim end to loopStart)
+ * - Fully outside loop: keep
+ *
+ * Also: if the kept trimmed fragment is extremely short, drop it (prevents "tick blips").
+ */
+function trimEventsAgainstLoop(list, loopStartTicks, loopEndTicks, opts={}){
+  const MIN_KEEP_TICKS = Number.isFinite(opts.minKeepTicks) ? opts.minKeepTicks : Math.round(APP.PPQ / 8); // ~1/32 note
+
+  const out = [];
+  for (const e of (list || [])){
+    const a = e.ticks;
+    const dur = Math.max(1, e.durationTicks || 1);
+    const b = a + dur;
+
+    // fully before or after loop -> keep
+    if (b <= loopStartTicks || a >= loopEndTicks){
+      out.push(e);
+      continue;
+    }
+
+    // fully inside loop -> delete (regen will replace)
+    if (a >= loopStartTicks && b <= loopEndTicks){
+      continue;
+    }
+
+    // starts BEFORE loop and overlaps into it -> keep LEFT fragment only
+    if (a < loopStartTicks && b > loopStartTicks){
+      const newDur = loopStartTicks - a;
+      if (newDur >= MIN_KEEP_TICKS){
+        out.push({ ...e, durationTicks: Math.max(1, newDur) });
+      }
+      continue;
+    }
+
+    // starts INSIDE loop and extends past loop end -> DROP entirely (prevents tail artifacts)
+    if (a >= loopStartTicks && a < loopEndTicks && b > loopEndTicks){
+      continue;
+    }
+
+    // spans across entire loop (starts before, ends after) -> keep LEFT fragment only
+    if (a < loopStartTicks && b > loopEndTicks){
+      const newDur = loopStartTicks - a;
+      if (newDur >= MIN_KEEP_TICKS){
+        out.push({ ...e, durationTicks: Math.max(1, newDur) });
+      }
+      continue;
+    }
+
+    // fallback keep
+    out.push(e);
+  }
+  return out;
+}
+
+/**
+ * Safety cleanup for swing/humanize:
+ * Remove notes that intersect the PADDED window ONLY if they also intersect the STRICT loop window.
+ * This prevents deleting the "kept-left" trimmed notes that end exactly at strictStart.
+ */
+function removeEventsIntersectingPaddedButOnlyIfTheyHitStrict(list, paddedStart, paddedEnd, strictStart, strictEnd){
+  return (list || []).filter(e=>{
+    const a = e.ticks;
+    const b = e.ticks + Math.max(1, e.durationTicks || 1);
+
+    const intersectsPadded = (b > paddedStart) && (a < paddedEnd);
+    if (!intersectsPadded) return true;
+
+    const intersectsStrict = (b > strictStart) && (a < strictEnd);
+    // remove only if it still "touches" strict loop zone
+    return !intersectsStrict;
+  });
+}
+
+function regenWithinLoopIfActive({ p, rng, seed }){
+  if (!STATE.current || !STATE.current.eventsByTrack || !STATE.current.meta) return false;
+
+  const totalBeats = p.bars * APP.BEATS_PER_BAR;
+  const loop = getActiveLoopBeatRangeOrNull(totalBeats);
+  if (!loop) return false;
+
+  // STRICT tick window from loop
+  const strictStartTicks = Math.floor(loop.startBeat * APP.PPQ);
+  const strictEndTicks   = Math.ceil(loop.endBeat * APP.PPQ);
+
+  // PADDED window ONLY for swing/humanize safety
+  const pad = computeTimingPadTicks({ bpm: p.bpm, swingPct: p.swingPct, humanizeMs: p.humanizeMs });
+  const paddedStartTicks = Math.max(0, strictStartTicks - pad);
+  const paddedEndTicks   = strictEndTicks + pad;
+
+  const barsToRegen = barsOverlappingBeatRange({
+    startBeat: loop.startBeat,
+    endBeat: loop.endBeat,
+    bars: p.bars
+  });
+  if (!barsToRegen.length) return false;
+
+  const rootPc = NOTE_TO_SEMI[p.keyName];
+
+  const progressionDegrees = STATE.current.meta.progressionDegrees?.slice() || [];
+  const perBarUsedScalePcs = (STATE.current.meta.perBarUsedScalePcs || []).map(s=>s.slice());
+
+  const by = {
+    Chords: (STATE.current.eventsByTrack.Chords || []).slice(),
+    Bass:   (STATE.current.eventsByTrack.Bass   || []).slice(),
+    Melody: (STATE.current.eventsByTrack.Melody || []).slice()
+  };
+
+  const canRegen = {
+    Chords: !p.lockChords,
+    Bass:   !p.lockBass,
+    Melody: !p.lockMelody
+  };
+
+  // nothing unlocked but we still "handled" regen
+  if (!canRegen.Chords && !canRegen.Bass && !canRegen.Melody) return true;
+
+  // Step 1: punch-in trim/delete against STRICT loop window
+  if (canRegen.Chords) by.Chords = trimEventsAgainstLoop(by.Chords, strictStartTicks, strictEndTicks);
+  if (canRegen.Bass)   by.Bass   = trimEventsAgainstLoop(by.Bass,   strictStartTicks, strictEndTicks);
+  if (canRegen.Melody) by.Melody = trimEventsAgainstLoop(by.Melody, strictStartTicks, strictEndTicks);
+
+  // Step 2: swing/humanize safety cleanup — BUT only if note still intersects STRICT loop area
+  if (canRegen.Chords) by.Chords = removeEventsIntersectingPaddedButOnlyIfTheyHitStrict(by.Chords, paddedStartTicks, paddedEndTicks, strictStartTicks, strictEndTicks);
+  if (canRegen.Bass)   by.Bass   = removeEventsIntersectingPaddedButOnlyIfTheyHitStrict(by.Bass,   paddedStartTicks, paddedEndTicks, strictStartTicks, strictEndTicks);
+  if (canRegen.Melody) by.Melody = removeEventsIntersectingPaddedButOnlyIfTheyHitStrict(by.Melody, paddedStartTicks, paddedEndTicks, strictStartTicks, strictEndTicks);
+
+  const newEvents = { Chords: [], Bass: [], Melody: [] };
+
+  // CHORDS regen within barsToRegen
+  if (canRegen.Chords){
+    let prevVoicing = null;
+    const firstBar = barsToRegen[0];
+
+    prevVoicing = approxPrevChordVoicingForBar({
+      barIndex: firstBar,
+      chordsEvents: STATE.current.eventsByTrack.Chords || [],
+      bpm: p.bpm,
+      chordTightMs: p.chordTightMs
+    });
+
+    for (const bar of barsToRegen){
+      const degree = progressionDegrees[bar] ?? 1;
+
+      let usedScale = perBarUsedScalePcs[bar];
+      if (!usedScale || !usedScale.length){
+        const mix = buildChordPcsForBar({
+          rootPc, mode:p.mode, degree, rng,
+          mixturePct:p.mixturePct, mixtureDir:p.mixtureDir
+        });
+        usedScale = mix.usedScale.slice();
+        perBarUsedScalePcs[bar] = usedScale.slice();
+      }
+
+      const chordSize = chooseChordSize(p.extensions, rng, p.chordComplexity);
+      let chordPcs = chordFromDegree(usedScale, degree, chordSize);
+      let chordMidi = buildVoicing(chordPcs, prevVoicing, rng, p.chordComplexity, p.chordRegister);
+      chordMidi = addColorToneIfWanted(chordMidi, usedScale, rng, p.extensions);
+
+      prevVoicing = chordMidi;
+
+      newEvents.Chords.push(...makeChordEventsForBar({
+        barIndex: bar,
+        chordMidiNotes: chordMidi,
+        chordComplexity: p.chordComplexity,
+        chordStyle: p.chordStyle,
+        chordTightMs: p.chordTightMs,
+        rng,
+        bpm: p.bpm
+      }));
+    }
+  }
+
+  // BASS regen
+  if (canRegen.Bass){
+    for (const bar of barsToRegen){
+      const degree = progressionDegrees[bar] ?? 1;
+
+      let usedScale = perBarUsedScalePcs[bar];
+      if (!usedScale || !usedScale.length){
+        const mix = buildChordPcsForBar({
+          rootPc, mode:p.mode, degree, rng,
+          mixturePct:p.mixturePct, mixtureDir:p.mixtureDir
+        });
+        usedScale = mix.usedScale.slice();
+        perBarUsedScalePcs[bar] = usedScale.slice();
+      }
+
+      const chordPcs = chordFromDegree(usedScale, degree, 3);
+      newEvents.Bass.push(...makeBassEventsForBar({
+        barIndex: bar,
+        bassComplexity: p.bassComplexity,
+        bassStyle: p.bassStyle,
+        scalePcs: usedScale,
+        chordPcs,
+        rng
+      }));
+    }
+  }
+
+  // MELODY regen
+  if (canRegen.Melody){
+    const firstBar = barsToRegen[0];
+    const firstBarStartTicks = firstBar * APP.BEATS_PER_BAR * APP.PPQ;
+
+    let prevMidi = findLastMelodyMidiBeforeTick(
+      STATE.current.eventsByTrack.Melody || [],
+      firstBarStartTicks
+    );
+
+    let motif = null;
+
+    for (const bar of barsToRegen){
+      const degree = progressionDegrees[bar] ?? 1;
+
+      let usedScale = perBarUsedScalePcs[bar];
+      if (!usedScale || !usedScale.length){
+        const mix = buildChordPcsForBar({
+          rootPc, mode:p.mode, degree, rng,
+          mixturePct:p.mixturePct, mixtureDir:p.mixtureDir
+        });
+        usedScale = mix.usedScale.slice();
+        perBarUsedScalePcs[bar] = usedScale.slice();
+      }
+
+      const chordPcs = chordFromDegree(usedScale, degree, 3);
+      const phraseStart = (bar % 2 === 0);
+
+      if (phraseStart || !motif){
+        motif = { rhythm: melodyRhythm(p.melodyComplexity, rng), notes: null, prevMidi };
+      }
+
+      const res = makeMelodyEventsForBar({
+        barIndex: bar,
+        melodyComplexity: p.melodyComplexity,
+        contour: p.melodyContour,
+        scalePcs: usedScale,
+        chordPcs,
+        rng,
+        motif: motif.notes
+          ? { rhythm: motif.rhythm, notes: motif.notes, prevMidi: motif.prevMidi, allowVariation:true }
+          : { rhythm: motif.rhythm, notes:null, prevMidi: motif.prevMidi, allowVariation:false }
+      });
+
+      newEvents.Melody.push(...res.events);
+
+      if (!motif.notes) motif.notes = res.motifOut.notes.slice();
+      motif.prevMidi = res.motifOut.prevMidi;
+      prevMidi = motif.prevMidi;
+    }
+  }
+
+  // Apply timing ONLY to new events
+  const newAll = mergeEvents(newEvents);
+  const newAll2 = applySwingAndHumanize(newAll, p.bpm, p.swingPct, p.humanizeMs, rng)
+    .map(e => ({...e, durationTicks: Math.max(1, Math.round(e.durationTicks))}));
+
+  // Merge back into by
+  for (const e of newAll2){
+    if (by[e.track]) by[e.track].push(e);
+  }
+
+  // Sort + de-dupe each track
+  for (const t of APP.TRACKS){
+    by[t] = dedupeEvents((by[t] || []).slice())
+      .sort((a,b)=>a.ticks-b.ticks || a.midi-b.midi);
+  }
+
+  // Update STATE
+  STATE.current.eventsByTrack = by;
+  STATE.current.eventsAll = mergeEvents(by);
+
+  // Update progression string (approx)
+  const chordNames = [];
+  if (by.Chords.length){
+    const tightWin = Math.round((p.chordTightMs/1000) * (APP.PPQ * (p.bpm/60))) + 3;
+    for (let bar=0; bar<p.bars; bar++){
+      const barStart = bar * APP.BEATS_PER_BAR * APP.PPQ;
+      const hits = by.Chords.filter(ev => Math.abs(ev.ticks - barStart) <= tightWin);
+      const mids = [...new Set(hits.map(h=>h.midi))].sort((a,b)=>a-b);
+      chordNames.push(mids.length ? prettyChordNameFromMidiNotes(mids) : "—");
+    }
+  }
+
+  if (STATE.current.summary){
+    STATE.current.summary.seed = seed;
+    STATE.current.summary.progression = chordNames.join(" | ");
+  }
+
+  if (STATE.current.meta){
+    STATE.current.meta.perBarUsedScalePcs = perBarUsedScalePcs;
+  }
+
+  return true;
+}
+// === END PATCH: regen-loop-region ===
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================
+// === PATCH: midi-export ===
+// ============================================================
+function exportMidiBytesForTracks({byTrack, bpm, selection}){
+  const midi = new Midi();
+  midi.header.ppq = APP.PPQ;
+  midi.header.setTempo(bpm);
+
+  const addTrack = (name, evs)=>{
+    const t = midi.addTrack();
+    t.name = name;
+    for (const e of (evs || [])){
+      t.addNote({
+        midi: e.midi,
+        ticks: e.ticks,
+        durationTicks: e.durationTicks,
+        velocity: clamp(e.velocity, 0, 1)
+      });
+    }
+  };
+
+  if (selection === "combined"){
+    // Always add the 3 canonical tracks (even if empty).
+    for (const name of APP.TRACKS){
+      addTrack(name, byTrack?.[name] || []);
+    }
+  } else {
+    // Single-track export (stems mode)
+    const name = Object.keys(byTrack || {})[0] || "Track";
+    addTrack(name, byTrack?.[name] || []);
+  }
+
+  return midi.toArray();
+}
+
+function downloadBytes(bytes, filename){
+  const blob = new Blob([bytes], { type: "audio/midi" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+function doExport(){
+  if (!STATE.current) return;
+
+  const p = UI.gatherParams();
+  const prefix = (p.filePrefix && p.filePrefix.trim().length)
+    ? p.filePrefix.trim()
+    : `midi_${p.keyName}_${p.mode}_${p.mood}_${p.bars}bars_${p.bpm}bpm`;
+
+  // ✅ Export should reflect what’s currently in the arrangement,
+  // regardless of Locks (Locks are for regeneration, not export).
+  const by = STATE.current.eventsByTrack || { Chords:[], Bass:[], Melody:[] };
+
+  if (p.exportMode === "combined"){
+    const bytes = exportMidiBytesForTracks({
+      byTrack: by,
+      bpm: p.bpm,
+      selection: "combined"
+    });
+    downloadBytes(bytes, `${prefix}.mid`);
+  } else {
+    for (const name of APP.TRACKS){
+      const bytes = exportMidiBytesForTracks({
+        byTrack: { [name]: by[name] || [] },
+        bpm: p.bpm,
+        selection: "single"
+      });
+      downloadBytes(bytes, `${prefix}__${name.toLowerCase()}.mid`);
+    }
+  }
+
+  UI.setStatus("Exported MIDI ✓");
+}
+// === END PATCH: midi-export ===
+
+
+
+
+    // === END PATCH: midi-export ===
+
+// ============================================================
+// === PATCH: audio-preview ===
+// ============================================================
+function applyMixToEngine(){
+  // Applies STATE.mix -> engine volumes (works for synths now, samplers later)
+  ensureMixState();
+  if (!STATE.synths) return;
+
+  const bases = STATE.synths.baseDb || { Chords:-18, Bass:-10, Melody:-12 };
+
+  for (const track of APP.TRACKS){
+    const bus = STATE.synths.busses?.[track];
+    if (!bus) continue;
+
+    const m = STATE.mix[track];
+    const audible = isTrackAudible(track);
+
+    const targetDb = audible
+      ? (bases[track] + (Number.isFinite(m.gainDb) ? m.gainDb : 0))
+      : -Infinity;
+
+    try{
+      // Tone.Volume uses dB
+      bus.volume.value = targetDb;
+    }catch(e){}
+  }
+}
+
+function ensureSynths(){
+  if (STATE.synths) return STATE.synths;
+
+  // Per-track volume busses (dB) so Mix can be applied cleanly
+  const busses = {
+    Chords: new Tone.Volume(-18).toDestination(),
+    Bass:   new Tone.Volume(-10).toDestination(),
+    Melody: new Tone.Volume(-12).toDestination()
+  };
+
+  // Keep a record of “base” levels so gainDb is additive
+  const baseDb = { Chords:-18, Bass:-10, Melody:-12 };
+
+  const chords = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "sawtooth" },
+    envelope: { attack: 0.05, decay: 0.1, sustain: 0.65, release: 0.8 }
+  }).connect(busses.Chords);
+
+  const bass = new Tone.MonoSynth({
+    oscillator: { type: "sine" },
+    filter: { Q: 1, type: "lowpass", rolloff: -12 },
+    envelope: { attack: 0.01, decay: 0.12, sustain: 0.55, release: 0.4 },
+    filterEnvelope: { attack: 0.01, decay: 0.08, sustain: 0.2, release: 0.2, baseFrequency: 90, octaves: 2.2 }
+  }).connect(busses.Bass);
+
+  const melody = new Tone.Synth({
+    oscillator: { type: "triangle" },
+    envelope: { attack: 0.01, decay: 0.08, sustain: 0.25, release: 0.25 }
+  }).connect(busses.Melody);
+
+  STATE.synths = { chords, bass, melody, busses, baseDb };
+
+  // Ensure mix state exists + apply immediately
+  ensureMixState();
+  applyMixToEngine();
+
+  return STATE.synths;
+}
+
+function stopPlayback(){
+  try{
+    Tone.Transport.stop();
+    Tone.Transport.cancel(0);
+    Tone.Transport.loop = false;
+    Tone.Transport.loopStart = 0;
+    Tone.Transport.loopEnd = 0;
+  }catch(e){}
+  UI.uiPlayState(false);
+  UI.setStatus("Stopped");
+  try{ if (typeof playheadStop === "function") playheadStop(true); }catch(e){}
+}
+
+function getLoopRangeSeconds(bpm){
+  const ok =
+    STATE.ui &&
+    Number.isFinite(STATE.ui.loopStartBeat) &&
+    Number.isFinite(STATE.ui.loopEndBeat) &&
+    Math.abs(STATE.ui.loopEndBeat - STATE.ui.loopStartBeat) > 1e-6;
+
+  if (!ok) return null;
+
+  const a = Math.min(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat);
+  const b = Math.max(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat);
+
+  const loopStartSec = a * (60 / bpm);
+  const loopEndSec   = b * (60 / bpm);
+
+  if (!(loopEndSec > loopStartSec)) return null;
+  return { loopStartSec, loopEndSec, loopStartBeat:a, loopEndBeat:b };
+}
+
+function schedulePlayback({eventsByTrack, bpm}){
+  stopPlayback();
+  ensureSynths();
+
+  // ✅ apply Mix every time before scheduling (so M/S/gain changes reflect immediately)
+  applyMixToEngine();
+
+  Tone.Transport.bpm.value = bpm;
+  Tone.Transport.position = 0;
+
+  const ticksToSeconds = (ticks)=> (ticks / APP.PPQ) * (60 / bpm);
+  const durToSeconds = (ticks)=> (ticks / APP.PPQ) * (60 / bpm);
+
+  // Schedule notes (Transport looping re-triggers automatically)
+  for (const e of (eventsByTrack.Chords||[])){
+    const t = ticksToSeconds(e.ticks);
+    const d = durToSeconds(e.durationTicks);
+    Tone.Transport.schedule((time)=>{
+      STATE.synths.chords.triggerAttackRelease(Tone.Frequency(e.midi,"midi"), d, time, e.velocity);
+    }, t);
+  }
+  for (const e of (eventsByTrack.Bass||[])){
+    const t = ticksToSeconds(e.ticks);
+    const d = durToSeconds(e.durationTicks);
+    Tone.Transport.schedule((time)=>{
+      STATE.synths.bass.triggerAttackRelease(Tone.Frequency(e.midi,"midi"), d, time, e.velocity);
+    }, t);
+  }
+  for (const e of (eventsByTrack.Melody||[])){
+    const t = ticksToSeconds(e.ticks);
+    const d = durToSeconds(e.durationTicks);
+    Tone.Transport.schedule((time)=>{
+      STATE.synths.melody.triggerAttackRelease(Tone.Frequency(e.midi,"midi"), d, time, e.velocity);
+    }, t);
+  }
+
+  const loop = getLoopRangeSeconds(bpm);
+
+  if (loop){
+    Tone.Transport.loop = true;
+    Tone.Transport.loopStart = loop.loopStartSec;
+    Tone.Transport.loopEnd = loop.loopEndSec;
+
+    const phBeat = (STATE.ui && Number.isFinite(STATE.ui.playheadBeat)) ? STATE.ui.playheadBeat : 0;
+    const phSec = phBeat * (60 / bpm);
+    const startSec = (phSec >= loop.loopStartSec && phSec < loop.loopEndSec) ? phSec : loop.loopStartSec;
+
+    try{ Tone.Transport.seconds = startSec; }catch(e){}
+  } else {
+    Tone.Transport.loop = false;
+    Tone.Transport.loopStart = 0;
+    Tone.Transport.loopEnd = 0;
+
+    const all = mergeEvents(eventsByTrack);
+    const last = all.reduce((m, e)=>Math.max(m, e.ticks + e.durationTicks), 0);
+    const endSec = ticksToSeconds(last) + 0.25;
+    Tone.Transport.scheduleOnce(()=>stopPlayback(), endSec);
+  }
+
+  UI.uiPlayState(true);
+  UI.setStatus(loop ? "Playing (Loop)…" : "Playing…");
+  Tone.Transport.start();
+}
+// === END PATCH: audio-preview ===
+
+
+
+// ============================================================
+// SECTION: ui-bindings
+// ============================================================
+const UI = (() => {
+  const $ = (id)=>document.getElementById(id);
+
+  const ui = {
+    // status / audio badge
+    status: $("status"),
+    audioDot: $("audioDot"),
+    audioState: $("audioState"),
+
+    // outputs
+    summary: $("summary"),
+    events: $("events"),
+
+    // buttons
+    btnGenerate: $("btnGenerate"),
+    btnRegen: $("btnRegen"),
+    btnPlay: $("btnPlay"),
+    btnStop: $("btnStop"),
+    btnExport: $("btnExport"),
+
+        // draw
+    paintMode: $("paintMode"),
+    drawTrack: $("drawTrack"),
+    drawLen: $("drawLen"),
+
+
+
+
+    // core params
+    key: $("key"),
+    scale: $("scale"),
+    bars: $("bars"),
+    tempo: $("tempo"),
+    seed: $("seed"),
+    humanize: $("humanize"),
+    swing: $("swing"),
+    mood: $("mood"),
+    mixture: $("mixture"),
+    mixtureDir: $("mixtureDir"),
+    extensions: $("extensions"),
+
+    // locks
+    lockChords: $("lockChords"),
+    lockBass: $("lockBass"),
+    lockMelody: $("lockMelody"),
+
+    // part params
+    chordComplexity: $("chordComplexity"),
+    chordStyle: $("chordStyle"),
+    chordTight: $("chordTight"),
+    chordRegister: $("chordRegister"),
+
+    bassComplexity: $("bassComplexity"),
+    bassStyle: $("bassStyle"),
+
+    melodyComplexity: $("melodyComplexity"),
+    melodyContour: $("melodyContour"),
+
+    // export
+    exportMode: $("exportMode"),
+    filePrefix: $("filePrefix"),
+
+    // mini readouts
+    humanizeVal: $("humanizeVal"),
+    swingVal: $("swingVal"),
+    mixtureVal: $("mixtureVal"),
+    chordTightVal: $("chordTightVal"),
+  };
+
+// ============================================================
+// === PATCH: ui-pianoroll ===
+// ============================================================
+const PianoRoll = (() => {
+  const COLORS = {
+    Chords: "#4aa3ff",
+    Bass:   "#b56bff",
+    Melody: "#ffd54a"
+  };
+
+  const BLACK_PCS = new Set([1,3,6,8,10]); // C#, D#, F#, G#, A#
+  const WHITE_PCS = new Set([0,2,4,5,7,9,11]); // C D E F G A B
+
+  function ensureStyles(){
+    if (document.getElementById("pianorollStyles")) return;
+    const style = document.createElement("style");
+    style.id = "pianorollStyles";
+    style.textContent = `
+      .prWrap{ display:flex; flex-direction:column; gap:10px; }
+      .prCanvasWrap{
+        border:1px solid var(--line);
+        border-radius:14px;
+        background: rgba(5,10,18,.35);
+        overflow:hidden;
+      }
+      canvas.prCanvas{ width:100%; height:480px; display:block; }
+
+      .prLegend{
+        display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+        font-family: var(--sans); font-size:12px; color: var(--muted);
+      }
+      .prItem{
+        display:inline-flex; align-items:center; gap:8px;
+        padding:6px 10px; border:1px solid var(--line);
+        border-radius:999px; background: rgba(0,0,0,.12);
+      }
+      .prSw{ width:10px; height:10px; border-radius:3px; }
+      .prHint{ font-family: var(--sans); font-size:12px; color: var(--muted); line-height:1.3; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const INST = new WeakMap();
+
+  function getOrCreateInstance(containerEl){
+    ensureStyles();
+
+    let inst = INST.get(containerEl);
+    if (inst) return inst;
+
+    containerEl.innerHTML = "";
+
+    const wrap = document.createElement("div");
+    wrap.className = "prWrap";
+
+    const legend = document.createElement("div");
+    legend.className = "prLegend";
+    legend.innerHTML = `
+      <span class="prItem"><span class="prSw" style="background:${COLORS.Melody}"></span>Melody</span>
+      <span class="prItem"><span class="prSw" style="background:${COLORS.Chords}"></span>Chords</span>
+      <span class="prItem"><span class="prSw" style="background:${COLORS.Bass}"></span>Bass</span>
+    `;
+
+    const canvasWrap = document.createElement("div");
+    canvasWrap.className = "prCanvasWrap";
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "prCanvas";
+    canvas.height = 480;
+    canvasWrap.appendChild(canvas);
+
+    const hint = document.createElement("div");
+    hint.className = "prHint";
+    hint.textContent = "Top lanes: BAR (drag to set loop) + SCRUB (drag to seek). Grid: notes (drag/move/resize).";
+
+    wrap.appendChild(legend);
+    wrap.appendChild(canvasWrap);
+    wrap.appendChild(hint);
+    containerEl.appendChild(wrap);
+
+    inst = {
+      containerEl,
+      canvas,
+      last: null
+    };
+    INST.set(containerEl, inst);
+    return inst;
+  }
+
+  const pc = (m)=>((m%12)+12)%12;
+  const isBlackKey = (m)=>BLACK_PCS.has(pc(m));
+  const isWhiteKey = (m)=>WHITE_PCS.has(pc(m));
+  const midiToOctave = (m)=>Math.floor(m/12)-1;
+
+  function ticksToBeat(ticks){ return ticks / APP.PPQ; }
+
+  function computeRange(eventsByTrack){
+    const all = mergeEvents(eventsByTrack);
+    if (!all.length) return { minMidi: 36, maxMidi: 84, has:false };
+
+    let minMidi = 127, maxMidi = 0;
+    for (const e of all){
+      if (Number.isFinite(e.midi)){
+        minMidi = Math.min(minMidi, e.midi);
+        maxMidi = Math.max(maxMidi, e.midi);
+      }
+    }
+    minMidi = clamp(minMidi - 3, 0, 127);
+    maxMidi = clamp(maxMidi + 3, 0, 127);
+    if (maxMidi - minMidi < 18){
+      const mid = Math.round((minMidi + maxMidi)/2);
+      minMidi = clamp(mid - 12, 0, 127);
+      maxMidi = clamp(mid + 12, 0, 127);
+    }
+    return { minMidi, maxMidi, has:true };
+  }
+
+  function renderEmpty(containerEl, {bars=8, minMidi=36, maxMidi=84, selectionId=null, playheadBeat=0} = {}){
+    const inst = getOrCreateInstance(containerEl);
+    draw(inst, {
+      eventsByTrack: {Chords:[],Bass:[],Melody:[]},
+      bars,
+      forcedRange: { minMidi, maxMidi },
+      selectionId,
+      playheadBeat
+    });
+  }
+
+  function render(containerEl, {eventsByTrack, bars, selectionId=null, playheadBeat=0}){
+    const inst = getOrCreateInstance(containerEl);
+    draw(inst, {eventsByTrack, bars, selectionId, playheadBeat});
+  }
+
+  function getLast(containerEl){
+    const inst = INST.get(containerEl);
+    return inst ? inst.last : null;
+  }
+
+  function draw(inst, {eventsByTrack, bars, forcedRange=null, selectionId=null, playheadBeat=0}){
+    const canvas = inst.canvas;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const cssW = canvas.getBoundingClientRect().width || 900;
+    const cssH = canvas.getBoundingClientRect().height || 480;
+
+    canvas.width  = Math.max(320, Math.floor(cssW * dpr));
+    canvas.height = Math.max(220, Math.floor(cssH * dpr));
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    ctx.clearRect(0,0,W,H);
+
+    const padR = Math.round(10 * dpr);
+    const padT = Math.round(10 * dpr);
+    const padB = Math.round(26 * dpr);
+
+    const pianoW = Math.round(110 * dpr);
+    const gap    = Math.round(8 * dpr);
+    const padL   = pianoW + gap;
+
+    const plotW = Math.max(1, W - padL - padR);
+    const plotH = Math.max(1, H - padT - padB);
+
+    const totalBeats = Math.max(1, bars * APP.BEATS_PER_BAR);
+
+    const range = forcedRange
+      ? { ...forcedRange, has: mergeEvents(eventsByTrack).length > 0 }
+      : computeRange(eventsByTrack);
+
+    const minMidi = range.minMidi;
+    const maxMidi = range.maxMidi;
+    const hasNotes = range.has;
+
+    const midiSpan = Math.max(1, (maxMidi - minMidi + 1));
+
+    const xForBeat = (beat)=> padL + (beat / totalBeats) * plotW;
+    const beatForX = (x)=> ((x - padL) / plotW) * totalBeats;
+
+    // ✅ Two top lanes (Logic-style):
+    // - BAR lane (top): drag to select loop region (snaps to bars)
+    // - SCRUB lane (below): drag to scrub playhead
+    const barLaneH  = Math.round(20 * dpr);
+    const scrubLaneH= Math.round(18 * dpr);
+    const rulerH    = barLaneH + scrubLaneH;
+
+    const barLaneY0   = padT;
+    const scrubLaneY0 = padT + barLaneH;
+
+    const gridY0 = padT + rulerH;
+    const gridH  = Math.max(1, plotH - rulerH);
+
+    const yForMidi = (midi)=> gridY0 + ((maxMidi - midi) / midiSpan) * gridH;
+    const midiForY = (y)=>{
+      const t = (y - gridY0) / gridH;
+      const midi = maxMidi - Math.round(t * midiSpan);
+      return clamp(midi, minMidi, maxMidi);
+    };
+
+    const rowH = Math.max(2, (gridH / midiSpan));
+
+    // --- Palette ---
+    const COL_BG_PIANO = "rgba(5,10,18,.30)";
+    const COL_BG_PLOT  = "rgba(5,10,18,.18)";
+
+    const COL_BAR_BG1  = "rgba(255,255,255,.070)";
+    const COL_BAR_BG2  = "rgba(255,255,255,.035)";
+    const COL_SCRUB_BG1= "rgba(255,255,255,.045)";
+    const COL_SCRUB_BG2= "rgba(255,255,255,.020)";
+
+    const COL_STRIPE_A = "rgba(255,255,255,.030)";
+    const COL_STRIPE_B = "rgba(255,255,255,.010)";
+
+    const COL_HLINE    = "rgba(255,255,255,.045)";
+    const COL_HLINE_C  = "rgba(255,255,255,.070)";
+
+    const COL_VLINE    = "rgba(255,255,255,.080)";
+    const COL_VLINE_BAR= "rgba(255,255,255,.140)";
+
+    // backgrounds
+    ctx.save();
+
+    // keyboard + grid backgrounds (grid only)
+    ctx.fillStyle = COL_BG_PIANO;
+    ctx.fillRect(0, gridY0, pianoW, gridH);
+
+    ctx.fillStyle = COL_BG_PLOT;
+    ctx.fillRect(padL, gridY0, plotW, gridH);
+
+    // BAR lane bg
+    const gBar = ctx.createLinearGradient(0, barLaneY0, 0, barLaneY0 + barLaneH);
+    gBar.addColorStop(0, COL_BAR_BG1);
+    gBar.addColorStop(1, COL_BAR_BG2);
+    ctx.fillStyle = gBar;
+    ctx.fillRect(padL, barLaneY0, plotW, barLaneH);
+
+    // SCRUB lane bg
+    const gScr = ctx.createLinearGradient(0, scrubLaneY0, 0, scrubLaneY0 + scrubLaneH);
+    gScr.addColorStop(0, COL_SCRUB_BG1);
+    gScr.addColorStop(1, COL_SCRUB_BG2);
+    ctx.fillStyle = gScr;
+    ctx.fillRect(padL, scrubLaneY0, plotW, scrubLaneH);
+
+    ctx.restore();
+
+    // keyboard rail aligns only with grid
+    drawKeyboardWhiteLanes(ctx, { dpr, pianoW, x0:0, y0:gridY0, h:gridH, minMidi, maxMidi });
+
+    // horizontal striping within grid
+    ctx.save();
+    for (let m=minMidi; m<=maxMidi; m++){
+      const y = yForMidi(m);
+      const hh = Math.max(1, rowH);
+      ctx.fillStyle = ((m - minMidi) % 2 === 0) ? COL_STRIPE_A : COL_STRIPE_B;
+      ctx.fillRect(padL, y, plotW, hh);
+    }
+    ctx.restore();
+
+    // vertical grid across BAR+SCRUB+GRID so it feels connected
+    ctx.save();
+    for (let b=0; b<=totalBeats; b++){
+      const x = Math.round(xForBeat(b)) + 0.5;
+      const isBar = (b % APP.BEATS_PER_BAR === 0);
+      ctx.strokeStyle = isBar ? COL_VLINE_BAR : COL_VLINE;
+      ctx.lineWidth = isBar ? (1.5 * dpr) : (1 * dpr);
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + rulerH + gridH);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // horizontal semitone lines (grid only)
+    ctx.save();
+    for (let m=minMidi; m<=maxMidi; m++){
+      const y = Math.round(yForMidi(m)) + 0.5;
+      const isC = (pc(m) === 0);
+      ctx.strokeStyle = isC ? COL_HLINE_C : COL_HLINE;
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // BAR lane labels (bar numbers)
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,.80)";
+    ctx.font = `${Math.round(12 * dpr)}px ${getComputedStyle(document.body).fontFamily || "system-ui"}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    for (let bar=0; bar<bars; bar++){
+      const beat = bar * APP.BEATS_PER_BAR;
+      const x = xForBeat(beat) + Math.round(6*dpr);
+      ctx.fillText(`${bar+1}`, x, barLaneY0 + Math.round(barLaneH*0.5));
+    }
+    ctx.restore();
+
+    // ✅ Loop overlay (BAR lane only) reads from STATE.ui.loopStartBeat / loopEndBeat
+    const loop = (STATE.ui && Number.isFinite(STATE.ui.loopStartBeat) && Number.isFinite(STATE.ui.loopEndBeat))
+      ? { a: STATE.ui.loopStartBeat, b: STATE.ui.loopEndBeat }
+      : null;
+
+    const loopStart = loop ? Math.min(loop.a, loop.b) : null;
+    const loopEnd   = loop ? Math.max(loop.a, loop.b) : null;
+    const loopActive = (loopStart != null && loopEnd != null && (loopEnd - loopStart) >= 1e-6);
+
+    if (loopActive){
+      const a = clamp(loopStart, 0, totalBeats);
+      const b = clamp(loopEnd, 0, totalBeats);
+      const x1 = xForBeat(a);
+      const x2 = xForBeat(b);
+      const w  = Math.max(2*dpr, x2 - x1);
+
+      ctx.save();
+      // fill
+      ctx.fillStyle = "rgba(103,183,255,.18)";
+      ctx.fillRect(x1, barLaneY0 + 1*dpr, w, barLaneH - 2*dpr);
+
+      // border
+      ctx.strokeStyle = "rgba(103,183,255,.55)";
+      ctx.lineWidth = Math.max(1, Math.round(1.25*dpr));
+      ctx.strokeRect(x1 + 0.5, barLaneY0 + 0.5, w, barLaneH);
+
+      // subtle handle hints
+      ctx.fillStyle = "rgba(255,255,255,.70)";
+      const hx = Math.max(2*dpr, Math.round(2*dpr));
+      ctx.fillRect(x1 - hx, barLaneY0 + Math.round(4*dpr), hx, barLaneH - Math.round(8*dpr));
+      ctx.fillRect(x2,      barLaneY0 + Math.round(4*dpr), hx, barLaneH - Math.round(8*dpr));
+      ctx.restore();
+    }
+
+    // --- Hit-test rects ---
+    const noteRects = [];
+
+    // notes (grid only)
+    if (hasNotes){
+      const tracksInDrawOrder = ["Chords","Bass","Melody"];
+      for (const track of tracksInDrawOrder){
+        const evs = (eventsByTrack[track] || []).slice().sort((a,b)=>a.ticks-b.ticks);
+        ctx.save();
+        ctx.fillStyle = COLORS[track] || "#ffffff";
+        ctx.globalAlpha = (track === "Chords") ? 0.78 : (track === "Bass") ? 0.88 : 0.92;
+
+        for (const e of evs){
+          const beat = ticksToBeat(e.ticks);
+          const durBeats = Math.max(0.05, ticksToBeat(e.durationTicks));
+
+          const x = xForBeat(beat);
+          const w = Math.max(2*dpr, (durBeats / totalBeats) * plotW);
+
+          const y = yForMidi(e.midi);
+          const hh = Math.max(2*dpr, rowH - 1*dpr);
+
+          if (x > padL + plotW || (x+w) < padL) continue;
+          if (y > gridY0 + gridH || (y+hh) < gridY0) continue;
+
+          const id = `${track}:${e.ticks}:${e.midi}:${e.durationTicks}`;
+          noteRects.push({ id, track, midi:e.midi, ticks:e.ticks, durationTicks:e.durationTicks, x, y, w, h:hh });
+
+          roundRect(ctx, x, y, w, hh, Math.round(3*dpr));
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // selection highlight
+    if (selectionId){
+      const hit = noteRects.find(r => r.id === selectionId);
+      if (hit){
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.lineWidth = Math.max(2, Math.round(2 * dpr));
+        roundRect(ctx, hit.x - 1*dpr, hit.y - 1*dpr, hit.w + 2*dpr, hit.h + 2*dpr, Math.round(4*dpr));
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // playhead (draw last)
+    if (Number.isFinite(playheadBeat) && playheadBeat >= 0){
+      const pb = clamp(playheadBeat, 0, totalBeats);
+      const x = Math.round(xForBeat(pb)) + 0.5;
+
+      ctx.save();
+
+      // thin white bar
+      ctx.strokeStyle = "rgba(255,255,255,.92)";
+      ctx.lineWidth = Math.max(1, Math.round(1.25 * dpr));
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + rulerH + gridH);
+      ctx.stroke();
+
+      // subtle glow
+      ctx.globalAlpha = 0.10;
+      ctx.lineWidth = Math.max(4, Math.round(4 * dpr));
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + rulerH + gridH);
+      ctx.stroke();
+
+      // small triangle at top (in BAR lane)
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+
+      const triW = Math.round(5 * dpr);
+      const triH = Math.round(8 * dpr);
+      const yTop = barLaneY0 + Math.round(0 * dpr);
+
+      ctx.beginPath();
+      ctx.moveTo(x, yTop + triH);
+      ctx.lineTo(x - triW, yTop);
+      ctx.lineTo(x + triW, yTop);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // borders + divider + lane separators
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,.09)";
+    ctx.lineWidth = 1*dpr;
+
+    // piano and plot frames (grid only)
+    ctx.strokeRect(0 + 0.5, gridY0 + 0.5, pianoW, gridH);
+    ctx.strokeRect(padL + 0.5, gridY0 + 0.5, plotW, gridH);
+
+    // BAR lane frame
+    ctx.strokeRect(padL + 0.5, barLaneY0 + 0.5, plotW, barLaneH);
+    // SCRUB lane frame
+    ctx.strokeRect(padL + 0.5, scrubLaneY0 + 0.5, plotW, scrubLaneH);
+
+    // divider between piano and grid
+    ctx.strokeStyle = "rgba(255,255,255,.10)";
+    ctx.lineWidth = 2*dpr;
+    ctx.beginPath();
+    ctx.moveTo(pianoW + 0.5, gridY0);
+    ctx.lineTo(pianoW + 0.5, gridY0 + gridH);
+    ctx.stroke();
+
+    // separator line between lanes and grid
+    ctx.strokeStyle = "rgba(255,255,255,.12)";
+    ctx.lineWidth = 2*dpr;
+    ctx.beginPath();
+    ctx.moveTo(padL, gridY0 + 0.5);
+    ctx.lineTo(padL + plotW, gridY0 + 0.5);
+    ctx.stroke();
+
+    // separator between bar lane and scrub lane
+    ctx.strokeStyle = "rgba(255,255,255,.10)";
+    ctx.lineWidth = 1*dpr;
+    ctx.beginPath();
+    ctx.moveTo(padL, scrubLaneY0 + 0.5);
+    ctx.lineTo(padL + plotW, scrubLaneY0 + 0.5);
+    ctx.stroke();
+
+    ctx.restore();
+
+    inst.last = {
+      range: { minMidi, maxMidi, hasNotes },
+      selectionId,
+      playheadBeat,
+      view: {
+        dpr,
+        W, H,
+        padT, padB, padL, padR,
+        pianoW, plotW, plotH,
+        barLaneH, scrubLaneH, rulerH,
+        barLaneY0, scrubLaneY0,
+        gridY0, gridH,
+        bars,
+        totalBeats,
+        minMidi, maxMidi,
+        xForBeat,
+        beatForX,
+        yForMidi,
+        midiForY,
+        isInKeys(x,y){ return x >= 0 && x <= pianoW && y >= gridY0 && y <= (gridY0 + gridH); },
+        isInGrid(x,y){ return x >= padL && x <= (padL + plotW) && y >= gridY0 && y <= (gridY0 + gridH); },
+        isInBarLane(x,y){ return x >= padL && x <= (padL + plotW) && y >= barLaneY0 && y <= (barLaneY0 + barLaneH); },
+        isInScrubLane(x,y){ return x >= padL && x <= (padL + plotW) && y >= scrubLaneY0 && y <= (scrubLaneY0 + scrubLaneH); }
+      },
+      noteRects
+    };
+  }
+
+  function drawKeyboardWhiteLanes(ctx, {dpr, pianoW, x0, y0, h, minMidi, maxMidi}){
+    ctx.save();
+
+    const whites = [];
+    for (let m=maxMidi; m>=minMidi; m--){
+      if (isWhiteKey(m)) whites.push(m);
+    }
+    if (!whites.length){
+      ctx.restore();
+      return;
+    }
+
+    const whiteH = h / whites.length;
+    const sep = Math.max(1*dpr, Math.round(2*dpr));
+
+    const yOfWhiteIndex = (i)=> y0 + i * whiteH;
+    const midOfWhiteIndex = (i)=> y0 + i * whiteH + whiteH * 0.5;
+
+    for (let i=0; i<whites.length; i++){
+      const y = yOfWhiteIndex(i);
+
+      const g = ctx.createLinearGradient(0, y, 0, y + whiteH);
+      g.addColorStop(0, "rgba(130,130,130,.34)");
+      g.addColorStop(1, "rgba(70,70,70,.30)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x0, y, pianoW, whiteH);
+
+      ctx.strokeStyle = "rgba(0,0,0,.75)";
+      ctx.lineWidth = sep;
+      ctx.beginPath();
+      ctx.moveTo(x0, y + whiteH);
+      ctx.lineTo(x0 + pianoW, y + whiteH);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255,255,255,.06)";
+      ctx.lineWidth = 1*dpr;
+      ctx.beginPath();
+      ctx.moveTo(x0, y + 0.5);
+      ctx.lineTo(x0 + pianoW, y + 0.5);
+      ctx.stroke();
+    }
+
+    const whiteIndex = new Map();
+    for (let i=0; i<whites.length; i++) whiteIndex.set(whites[i], i);
+
+    const blackW = Math.round(pianoW * 0.62);
+    const blackX = x0;
+    const blackH = Math.max(2*dpr, whiteH * 0.66);
+
+    const BETWEEN = {
+      1:  [0,2],
+      3:  [2,4],
+      6:  [5,7],
+      8:  [7,9],
+      10: [9,11],
+    };
+
+    for (let m=maxMidi; m>=minMidi; m--){
+      const p = pc(m);
+      if (!isBlackKey(m)) continue;
+
+      const pair = BETWEEN[p];
+      if (!pair) continue;
+
+      let lowerWhite = null;
+      let upperWhite = null;
+
+      for (let d=1; d<=3; d++){
+        const a = m - d;
+        const b = m + d;
+        if (lowerWhite == null && a >= minMidi && isWhiteKey(a) && pair.includes(pc(a))) lowerWhite = a;
+        if (upperWhite == null && b <= maxMidi && isWhiteKey(b) && pair.includes(pc(b))) upperWhite = b;
+        if (lowerWhite != null && upperWhite != null) break;
+      }
+      if (lowerWhite == null || upperWhite == null) continue;
+
+      const iLow = whiteIndex.get(lowerWhite);
+      const iHigh = whiteIndex.get(upperWhite);
+      if (iLow == null || iHigh == null) continue;
+
+      const iTop = Math.min(iLow, iHigh);
+      const yDivider = yOfWhiteIndex(iTop) + whiteH;
+      const yTab = yDivider - (blackH * 0.5);
+
+      const g = ctx.createLinearGradient(0, yTab, 0, yTab + blackH);
+      g.addColorStop(0, "rgba(27,33,43,.95)");
+      g.addColorStop(1, "rgba(12,15,21,.95)");
+      ctx.fillStyle = g;
+
+      roundRectOneSided(ctx, blackX, yTab, blackW, blackH, Math.round(4*dpr));
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255,255,255,.08)";
+      ctx.lineWidth = 1*dpr;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,.78)";
+    ctx.font = `${Math.round(12 * dpr)}px ${getComputedStyle(document.body).fontFamily || "system-ui"}`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+
+    for (let i=0; i<whites.length; i++){
+      const m = whites[i];
+      if (pc(m) !== 0) continue;
+      ctx.fillText(`C${midiToOctave(m)}`, x0 + pianoW - Math.round(10*dpr), midOfWhiteIndex(i));
+    }
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y,   x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x,   y+h, rr);
+    ctx.arcTo(x,   y+h, x,   y,   rr);
+    ctx.arcTo(x,   y,   x+w, y,   rr);
+    ctx.closePath();
+  }
+
+  function roundRectOneSided(ctx, x, y, w, h, r){
+    const rr = Math.min(r, h/2, w/2);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+  }
+
+  return { render, renderEmpty, getLast };
+})();
+// === END PATCH: ui-pianoroll ===
+
+
+
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-keyzones ===
+// ============================================================
+function bindPianoRollKeyZones(){
+  if (!ui.events) return;
+
+  // Canvas is created by PianoRoll (persistent), so we can query it once.
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  // Avoid double-binding across re-renders.
+  if (canvas.dataset.boundKeyzones === "1") return;
+  canvas.dataset.boundKeyzones = "1";
+
+  canvas.style.touchAction = "none"; // important for mobile pointer events
+
+  canvas.addEventListener("pointerdown", async (ev)=>{
+    // Need a recent view mapping
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    // Convert pointer position -> device pixels (because our view coords are device-pixel)
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // Only react to the keyboard rail region
+    if (!last.view.isInKeys(x, y)) return;
+
+    // Unlock audio (required by browsers)
+    const ok = await ensureAudioUnlocked();
+    if (!ok) { setStatus("Audio locked"); return; }
+
+    // Compute MIDI from Y position
+    const midi = last.view.midiForY(y);
+
+    // Audition note
+    try{
+      ensureSynths(); // from audio-preview
+      const freq = Tone.Frequency(midi, "midi");
+      // short clicky audition; tweak duration to taste
+      STATE.synths.melody.triggerAttackRelease(freq, 0.18, undefined, 0.85);
+      setStatus(`Key: ${freq.toNote()} (${midi})`);
+    } catch (e){
+      console.warn("Key audition failed:", e);
+    }
+  });
+}
+// === END PATCH: ui-pianoroll-keyzones ===
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-selection ===
+// ============================================================
+function bindPianoRollSelection(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundSelection === "1") return;
+  canvas.dataset.boundSelection = "1";
+
+  canvas.style.touchAction = "none";
+
+  async function auditionMidi(midi){
+    try{
+      const ok = await ensureAudioUnlocked();
+      if (!ok) return;
+      ensureSynths();
+      STATE.synths.melody.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.16, undefined, 0.85);
+    } catch(e){}
+  }
+
+  canvas.addEventListener("pointerdown", (ev)=>{
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // only grid selection (keyboard clicks handled by keyzones patch)
+    if (!last.view.isInGrid(x, y)) return;
+
+    // topmost hit wins -> iterate backwards
+    let hit = null;
+    const rs = last.noteRects || [];
+    for (let i = rs.length - 1; i >= 0; i--){
+      const r = rs[i];
+      if (x >= r.x && x <= (r.x + r.w) && y >= r.y && y <= (r.y + r.h)){
+        hit = r;
+        break;
+      }
+    }
+
+    // store selection in STATE
+    STATE.ui = STATE.ui || {};
+    STATE.ui.selectedNoteId = hit ? hit.id : null;
+
+    if (hit){
+      UI.setStatus(`Selected: ${hit.track} (midi ${hit.midi})`);
+      // audition (optional)
+      auditionMidi(hit.midi);
+    } else {
+      UI.setStatus("Selection cleared");
+    }
+
+    // redraw just the piano roll
+    renderPianoRoll();
+  });
+}
+// === END PATCH: ui-pianoroll-selection ===
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-drag-notes ===
+// ============================================================
+function bindPianoRollDragNotes(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundDragNotes === "1") return;
+  canvas.dataset.boundDragNotes = "1";
+
+  canvas.style.touchAction = "none";
+
+  // drag state (closure)
+  let drag = null; 
+  // drag = {
+  //   id, track, idxGuess,
+  //   startX, startY, startTicks, startMidi,
+  //   quantTicks,
+  //   pointerId
+  // }
+
+  const quantizeTicks = (ticks, q)=> Math.round(ticks / q) * q;
+
+  function findHit(last, x, y){
+    if (!last || !last.noteRects) return null;
+    const rs = last.noteRects;
+    for (let i = rs.length - 1; i >= 0; i--){
+      const r = rs[i];
+      if (x >= r.x && x <= (r.x + r.w) && y >= r.y && y <= (r.y + r.h)){
+        return r;
+      }
+    }
+    return null;
+  }
+
+  function findEventIndexByIdentity(trackName, rect){
+    // Best-effort: match by exact triple (ticks,midi,durationTicks).
+    const list = STATE.current?.eventsByTrack?.[trackName] || [];
+    for (let i=0; i<list.length; i++){
+      const e = list[i];
+      if (e.ticks === rect.ticks && e.midi === rect.midi && e.durationTicks === rect.durationTicks){
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function clampTicksToTimeline(ticks, durTicks){
+    const p = UI.gatherParams();
+    const totalTicks = p.bars * APP.BEATS_PER_BAR * APP.PPQ;
+    const maxStart = Math.max(0, totalTicks - Math.max(1, durTicks));
+    return clamp(ticks, 0, maxStart);
+  }
+
+  canvas.addEventListener("pointerdown", (ev)=>{
+    if (!STATE.current) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // only drag from grid notes
+    if (!last.view.isInGrid(x, y)) return;
+
+    const hit = findHit(last, x, y);
+    if (!hit) return;
+
+    // ✅ IMPORTANT: if user grabbed near the right edge, let resize handler own it
+    const edgePx = Math.max(8 * dpr, 10); // must match resize grab zone
+    const nearRightEdge = (x >= (hit.x + hit.w - edgePx) && x <= (hit.x + hit.w + edgePx));
+    if (nearRightEdge) return;
+
+    // select it
+    STATE.ui = STATE.ui || {};
+    STATE.ui.selectedNoteId = hit.id;
+
+    // try locate underlying event
+    const idx = findEventIndexByIdentity(hit.track, hit);
+
+    drag = {
+      id: hit.id,
+      track: hit.track,
+      idxGuess: idx,
+      startX: x,
+      startY: y,
+      startTicks: hit.ticks,
+      startMidi: hit.midi,
+      quantTicks: Math.round(APP.PPQ / 4), // 1/16 note grid (PPQ/4)
+      pointerId: ev.pointerId
+    };
+
+    canvas.setPointerCapture(ev.pointerId);
+    UI.setStatus(`Dragging: ${hit.track}`);
+    renderPianoRoll();
+  });
+
+  canvas.addEventListener("pointermove", (ev)=>{
+    if (!drag || !STATE.current) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // deltas in musical space
+    const dxBeats = last.view.beatForX(x) - last.view.beatForX(drag.startX);
+    const dyMidi  = last.view.midiForY(y) - last.view.midiForY(drag.startY);
+
+    let newTicks = drag.startTicks + Math.round(dxBeats * APP.PPQ);
+    newTicks = quantizeTicks(newTicks, drag.quantTicks);
+
+    let newMidi = drag.startMidi + dyMidi;
+
+    // clamp pitch to visible range + MIDI limits
+    newMidi = clamp(newMidi, last.view.minMidi, last.view.maxMidi);
+    newMidi = clamp(newMidi, 0, 127);
+
+    const list = STATE.current.eventsByTrack[drag.track] || [];
+    let idx = drag.idxGuess;
+
+    if (idx < 0){
+      const sel = (last.noteRects || []).find(r => r.id === drag.id);
+      if (sel) idx = findEventIndexByIdentity(drag.track, sel);
+      drag.idxGuess = idx;
+    }
+    if (idx < 0 || idx >= list.length) return;
+
+    const e = list[idx];
+
+    // clamp ticks to timeline so note stays inside bars
+    newTicks = clampTicksToTimeline(newTicks, e.durationTicks);
+
+    if (e.ticks === newTicks && e.midi === newMidi) return;
+
+    e.ticks = newTicks;
+    e.midi = newMidi;
+
+    STATE.current.eventsAll = mergeEvents(STATE.current.eventsByTrack);
+
+    renderPianoRoll();
+  });
+
+  function endDrag(ev){
+    if (!drag) return;
+
+    try{
+      if (ev && ev.pointerId != null) canvas.releasePointerCapture(ev.pointerId);
+    }catch(e){}
+
+    UI.setStatus("Drag complete");
+    drag = null;
+
+    renderPianoRoll();
+  }
+
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+}
+// === END PATCH: ui-pianoroll-drag-notes ===
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-playhead ===
+// ============================================================
+function playheadSet(beat){
+  STATE.ui = STATE.ui || {};
+  STATE.ui.playheadBeat = clamp(beat, 0, 999999);
+  renderPianoRoll();
+}
+
+function playheadReset(){
+  STATE.ui = STATE.ui || {};
+  STATE.ui.playheadBeat = 0;
+  renderPianoRoll();
+}
+
+function playheadStart(){
+  STATE.ui = STATE.ui || {};
+  if (STATE.ui.playheadRaf) return; // already running
+
+  const p = UI.gatherParams();
+  const bpm = p.bpm;
+
+  const tick = ()=>{
+    // if stopped, bail
+    if (Tone.Transport.state !== "started"){
+      playheadStop(false);
+      return;
+    }
+
+    // Transport.seconds is reliable; convert to beats
+    const beat = Tone.Transport.seconds * (bpm / 60);
+    STATE.ui.playheadBeat = beat;
+
+    // redraw roll with new playhead
+    renderPianoRoll();
+
+    STATE.ui.playheadRaf = requestAnimationFrame(tick);
+  };
+
+  STATE.ui.playheadRaf = requestAnimationFrame(tick);
+}
+
+function playheadStop(reset=true){
+  STATE.ui = STATE.ui || {};
+  if (STATE.ui.playheadRaf){
+    cancelAnimationFrame(STATE.ui.playheadRaf);
+    STATE.ui.playheadRaf = null;
+  }
+  if (reset) playheadReset();
+}
+// === END PATCH: ui-pianoroll-playhead ===
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-scrub ===
+// ============================================================
+function bindPianoRollScrub(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundScrub === "1") return;
+  canvas.dataset.boundScrub = "1";
+
+  canvas.style.touchAction = "none";
+
+  let scrubbing = null;
+
+  function getBeatFromPointer(ev){
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // ✅ scrub ONLY in the SCRUB lane (below bar numbers)
+    if (!last.view.isInScrubLane(x, y)) return null;
+
+    const beat = last.view.beatForX(x);
+    return clamp(beat, 0, last.view.totalBeats);
+  }
+
+  function clampBeatToLoopIfActive(beat){
+    const last = PianoRoll.getLast(ui.events);
+    const total = last?.view?.totalBeats ?? 999999;
+
+    const hasLoop =
+      STATE.ui &&
+      Number.isFinite(STATE.ui.loopStartBeat) &&
+      Number.isFinite(STATE.ui.loopEndBeat) &&
+      Math.abs(STATE.ui.loopEndBeat - STATE.ui.loopStartBeat) > 1e-6;
+
+    if (!hasLoop) return clamp(beat, 0, total);
+
+    const a = Math.min(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat);
+    const b = Math.max(STATE.ui.loopStartBeat, STATE.ui.loopEndBeat);
+    const lo = clamp(a, 0, total);
+    const hi = clamp(b, 0, total);
+
+    // keep it inside [lo, hi)
+    return clamp(beat, lo, Math.max(lo, hi - 1e-6));
+  }
+
+  function restartFromBeat(rawBeat){
+    const isPlaying = (Tone.Transport.state === "started");
+    const beat = clampBeatToLoopIfActive(rawBeat);
+
+    playheadSet(beat);
+
+    if (!isPlaying) return;
+
+    stopPlayback();
+
+    const p = UI.gatherParams();
+    const bpm = p.bpm;
+    const sec = beat * (60 / bpm);
+
+    schedulePlayback({ eventsByTrack: STATE.current.eventsByTrack, bpm });
+
+    try{ Tone.Transport.seconds = sec; }catch(e){}
+    playheadStart();
+  }
+
+  canvas.addEventListener("pointerdown", (ev)=>{
+    if (!STATE.current) return;
+
+    const beat = getBeatFromPointer(ev);
+    if (beat == null) return;
+
+    scrubbing = { pointerId: ev.pointerId };
+    canvas.setPointerCapture(ev.pointerId);
+
+    restartFromBeat(beat);
+  });
+
+  canvas.addEventListener("pointermove", (ev)=>{
+    if (!scrubbing) return;
+    if (ev.pointerId !== scrubbing.pointerId) return;
+
+    const beat = getBeatFromPointer(ev);
+    if (beat == null) return;
+
+    playheadSet(clampBeatToLoopIfActive(beat));
+  });
+
+  function end(ev){
+    if (!scrubbing) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== scrubbing.pointerId) return;
+
+    const beat = (ev ? getBeatFromPointer(ev) : null);
+    const finalBeat = (beat == null)
+      ? ((STATE.ui && Number.isFinite(STATE.ui.playheadBeat)) ? STATE.ui.playheadBeat : 0)
+      : beat;
+
+    if (Tone.Transport.state === "started"){
+      restartFromBeat(finalBeat);
+    } else {
+      playheadSet(clampBeatToLoopIfActive(finalBeat));
+    }
+
+    try{
+      if (ev && ev.pointerId != null) canvas.releasePointerCapture(ev.pointerId);
+    }catch(e){}
+
+    scrubbing = null;
+  }
+
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+
+  // ✅ also bind loop selection (BAR lane) from here, so we don't need extra wiring edits
+  bindPianoRollLoopSelect();
+}
+// === END PATCH: ui-pianoroll-scrub ===
+
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-resize-notes ===
+// ============================================================
+function bindPianoRollResizeNotes(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundResizeNotes === "1") return;
+  canvas.dataset.boundResizeNotes = "1";
+
+  canvas.style.touchAction = "none";
+
+  let resizing = null;
+  // resizing = {
+  //   id, track, idxGuess,
+  //   startX, startDurationTicks,
+  //   startTicks,
+  //   quantTicks,
+  //   pointerId,
+  //   minDurTicks
+  // }
+
+  const quantizeTicks = (ticks, q)=> Math.round(ticks / q) * q;
+
+  function findHit(last, x, y){
+    if (!last || !last.noteRects) return null;
+    const rs = last.noteRects;
+    for (let i = rs.length - 1; i >= 0; i--){
+      const r = rs[i];
+      if (x >= r.x && x <= (r.x + r.w) && y >= r.y && y <= (r.y + r.h)){
+        return r;
+      }
+    }
+    return null;
+  }
+
+  function findEventIndexByIdentity(trackName, rect){
+    const list = STATE.current?.eventsByTrack?.[trackName] || [];
+    for (let i=0; i<list.length; i++){
+      const e = list[i];
+      if (e.ticks === rect.ticks && e.midi === rect.midi && e.durationTicks === rect.durationTicks){
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function clampDurationToTimeline(startTicks, durationTicks){
+    const p = UI.gatherParams();
+    const totalTicks = p.bars * APP.BEATS_PER_BAR * APP.PPQ;
+    const maxDur = Math.max(1, totalTicks - startTicks);
+    return clamp(durationTicks, 1, maxDur);
+  }
+
+  canvas.addEventListener("pointerdown", (ev)=>{
+    if (!STATE.current) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    if (!last.view.isInGrid(x, y)) return;
+
+    const hit = findHit(last, x, y);
+    if (!hit) return;
+
+    // Edge detection: only resize if pointer is near right edge
+    const edgePx = Math.max(8 * dpr, 10); // grab zone
+    const nearRightEdge = (x >= (hit.x + hit.w - edgePx) && x <= (hit.x + hit.w + edgePx));
+    if (!nearRightEdge) return; // not a resize gesture
+
+    // prevent scrub from taking it (scrub patch ignores note hits already)
+    // select it
+    STATE.ui = STATE.ui || {};
+    STATE.ui.selectedNoteId = hit.id;
+
+    const idx = findEventIndexByIdentity(hit.track, hit);
+    if (idx < 0) return;
+
+    resizing = {
+      id: hit.id,
+      track: hit.track,
+      idxGuess: idx,
+      startX: x,
+      startTicks: hit.ticks,
+      startDurationTicks: hit.durationTicks,
+      quantTicks: Math.round(APP.PPQ / 4), // 1/16
+      minDurTicks: Math.round(APP.PPQ / 8), // 1/32 minimum
+      pointerId: ev.pointerId
+    };
+
+    canvas.setPointerCapture(ev.pointerId);
+    UI.setStatus(`Resizing: ${hit.track}`);
+    renderPianoRoll();
+  });
+
+  canvas.addEventListener("pointermove", (ev)=>{
+    // cursor hint (optional): show ew-resize when near edge
+    const last = PianoRoll.getLast(ui.events);
+    if (last && last.view && !resizing){
+      const rect = canvas.getBoundingClientRect();
+      const dpr = last.view.dpr || 1;
+      const x = (ev.clientX - rect.left) * dpr;
+      const y = (ev.clientY - rect.top) * dpr;
+
+      if (last.view.isInGrid(x,y)){
+        const hit = findHit(last, x, y);
+        if (hit){
+          const edgePx = Math.max(8 * dpr, 10);
+          const nearRightEdge = (x >= (hit.x + hit.w - edgePx) && x <= (hit.x + hit.w + edgePx));
+          canvas.style.cursor = nearRightEdge ? "ew-resize" : "default";
+        } else {
+          canvas.style.cursor = "default";
+        }
+      } else {
+        canvas.style.cursor = "default";
+      }
+    }
+
+    if (!resizing || !STATE.current) return;
+
+    const viewLast = PianoRoll.getLast(ui.events);
+    if (!viewLast || !viewLast.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = viewLast.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+
+    const dxBeats = viewLast.view.beatForX(x) - viewLast.view.beatForX(resizing.startX);
+    let deltaTicks = Math.round(dxBeats * APP.PPQ);
+
+    let newDur = resizing.startDurationTicks + deltaTicks;
+
+    // quantize duration
+    newDur = quantizeTicks(newDur, resizing.quantTicks);
+
+    // clamp min
+    newDur = Math.max(resizing.minDurTicks, newDur);
+
+    const list = STATE.current.eventsByTrack[resizing.track] || [];
+    const idx = resizing.idxGuess;
+    if (idx < 0 || idx >= list.length) return;
+
+    const e = list[idx];
+
+    // clamp to timeline end
+    newDur = clampDurationToTimeline(e.ticks, newDur);
+
+    if (e.durationTicks === newDur) return;
+
+    e.durationTicks = Math.max(1, newDur);
+    STATE.current.eventsAll = mergeEvents(STATE.current.eventsByTrack);
+
+    renderPianoRoll();
+  });
+
+  function end(ev){
+    if (!resizing) return;
+    try{
+      if (ev && ev.pointerId != null) canvas.releasePointerCapture(ev.pointerId);
+    }catch(e){}
+
+    UI.setStatus("Resize complete");
+    resizing = null;
+    renderPianoRoll();
+  }
+
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+// === END PATCH: ui-pianoroll-resize-notes ===
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-create-delete ===
+// ============================================================
+function bindPianoRollCreateDelete(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundCreateDelete === "1") return;
+  canvas.dataset.boundCreateDelete = "1";
+
+  canvas.style.touchAction = "none";
+
+  // Creation snaps to QUARTER notes (1 beat). Editing can be finer elsewhere.
+  const createQuantTicks = APP.PPQ; // 1/4 note grid
+
+  const quantizeCreate = (ticks)=> Math.round(ticks / createQuantTicks) * createQuantTicks;
+
+  function parseId(id){
+    const parts = String(id || "").split(":");
+    if (parts.length < 4) return null;
+    const track = parts[0];
+    const ticks = parseInt(parts[1], 10);
+    const midi  = parseInt(parts[2], 10);
+    const dur   = parseInt(parts[3], 10);
+    if (!track || !Number.isFinite(ticks) || !Number.isFinite(midi) || !Number.isFinite(dur)) return null;
+    return { track, ticks, midi, dur };
+  }
+
+  function removeSelected(){
+    if (!STATE.current || !STATE.ui || !STATE.ui.selectedNoteId) return false;
+
+    const info = parseId(STATE.ui.selectedNoteId);
+    if (!info) return false;
+
+    const list = STATE.current.eventsByTrack?.[info.track];
+    if (!Array.isArray(list)) return false;
+
+    const before = list.length;
+
+    let removed = false;
+    const out = [];
+    for (let i=0; i<list.length; i++){
+      const e = list[i];
+      if (!removed && e.ticks === info.ticks && e.midi === info.midi && e.durationTicks === info.dur){
+        removed = true;
+        continue;
+      }
+      out.push(e);
+    }
+
+    STATE.current.eventsByTrack[info.track] = out;
+    STATE.current.eventsAll = mergeEvents(STATE.current.eventsByTrack);
+
+    STATE.ui.selectedNoteId = null;
+    renderPianoRoll();
+
+    return (before !== out.length);
+  }
+
+  async function auditionMidi(midi, track){
+    try{
+      const ok = await ensureAudioUnlocked();
+      if (!ok) return;
+      ensureSynths();
+
+      if (track === "Bass"){
+        STATE.synths.bass.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.14, undefined, 0.9);
+      } else if (track === "Chords"){
+        STATE.synths.chords.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.14, undefined, 0.8);
+      } else {
+        STATE.synths.melody.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.16, undefined, 0.85);
+      }
+    } catch(e){}
+  }
+
+  // Double-click creates a note using Draw Track + Draw Length dropdowns
+  canvas.addEventListener("dblclick", async (ev)=>{
+    if (!STATE.current) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    if (!last.view.isInGrid(x, y)) return;
+
+    // Don't create on top of an existing note
+    const rs = last.noteRects || [];
+    for (let i = rs.length - 1; i >= 0; i--){
+      const r = rs[i];
+      if (x >= r.x && x <= (r.x + r.w) && y >= r.y && y <= (r.y + r.h)){
+        return;
+      }
+    }
+
+    const p = UI.gatherParams();
+
+    const beat = clamp(last.view.beatForX(x), 0, last.view.totalBeats);
+
+    // snap time to 1/4
+    let ticks = quantizeCreate(Math.round(beat * APP.PPQ));
+
+    // pick track from dropdown (default Melody)
+    const track = (p.drawTrack || "Melody");
+
+    // pick duration from dropdown (beats)
+    const lenBeats = clamp(parseInt(p.drawLenBeats || 1, 10), 1, 16);
+    let dur = clamp(lenBeats * APP.PPQ, createQuantTicks, 999999);
+
+    // midi from row + gentle track ranges
+    let midi = clamp(last.view.midiForY(y), 0, 127);
+    if (track === "Bass"){
+      midi = clamp(midi, 28, 60);
+    } else if (track === "Chords"){
+      midi = clamp(midi, 48, 84);
+    }
+
+    // clamp into timeline so note fits
+    const totalTicks = p.bars * APP.BEATS_PER_BAR * APP.PPQ;
+    ticks = clamp(ticks, 0, Math.max(0, totalTicks - 1));
+    dur = clamp(dur, createQuantTicks, Math.max(createQuantTicks, totalTicks - ticks));
+
+    STATE.current.eventsByTrack[track] = STATE.current.eventsByTrack[track] || [];
+    STATE.current.eventsByTrack[track].push({
+      track,
+      midi,
+      ticks,
+      durationTicks: dur,
+      velocity: (track === "Bass") ? 0.88 : (track === "Chords") ? 0.75 : 0.80
+    });
+
+    STATE.current.eventsAll = mergeEvents(STATE.current.eventsByTrack);
+
+    // select it
+    STATE.ui = STATE.ui || {};
+    STATE.ui.selectedNoteId = `${track}:${ticks}:${midi}:${dur}`;
+
+    UI.setStatus(`Added: ${track} (midi ${midi})`);
+    renderPianoRoll();
+
+    // audition
+    auditionMidi(midi, track);
+  });
+
+  // Delete selected note
+  window.addEventListener("keydown", (ev)=>{
+    const key = ev.key;
+
+    // Avoid interfering with typing in inputs
+    const tag = (ev.target && ev.target.tagName) ? String(ev.target.tagName).toLowerCase() : "";
+    const isTyping = (tag === "input" || tag === "textarea" || ev.target?.isContentEditable);
+    if (isTyping) return;
+
+    if (key === "Delete" || key === "Backspace"){
+      const did = removeSelected();
+      if (did){
+        ev.preventDefault();
+        UI.setStatus("Deleted note");
+      }
+    }
+  });
+}
+// === END PATCH: ui-pianoroll-create-delete ===
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-paint-mode ===
+// ============================================================
+function bindPianoRollPaintMode(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundPaintMode === "1") return;
+  canvas.dataset.boundPaintMode = "1";
+
+  canvas.style.touchAction = "none";
+
+  const createQuantTicks = APP.PPQ; // 1/4 grid for painting
+
+  let paint = null;
+  // paint = { pointerId, placedSet: Set<string> }
+
+  const keyFor = (track, ticks, midi)=> `${track}:${ticks}:${midi}`;
+
+  async function auditionMidi(midi, track){
+    try{
+      const ok = await ensureAudioUnlocked();
+      if (!ok) return;
+      ensureSynths();
+
+      // audition uses appropriate synth for feel
+      if (track === "Bass"){
+        STATE.synths.bass.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.14, undefined, 0.9);
+      } else if (track === "Chords"){
+        // a single note audition for chords is fine
+        STATE.synths.chords.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.14, undefined, 0.8);
+      } else {
+        STATE.synths.melody.triggerAttackRelease(Tone.Frequency(midi,"midi"), 0.16, undefined, 0.85);
+      }
+    } catch(e){}
+  }
+
+  function quantizeCreateTicks(ticks){
+    return Math.round(ticks / createQuantTicks) * createQuantTicks;
+  }
+
+  function paintAtPointer(ev){
+    if (!STATE.current) return;
+
+    const p = UI.gatherParams();
+    if (!p.paintMode) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    if (!last.view.isInGrid(x, y)) return;
+
+    // Don't paint if pointer is over a note (prevents accidental stacking)
+    const rs = last.noteRects || [];
+    for (let i = rs.length - 1; i >= 0; i--){
+      const r = rs[i];
+      if (x >= r.x && x <= (r.x + r.w) && y >= r.y && y <= (r.y + r.h)){
+        return;
+      }
+    }
+
+    const beat = clamp(last.view.beatForX(x), 0, last.view.totalBeats);
+    const midiRaw = clamp(last.view.midiForY(y), 0, 127);
+
+    let ticks = quantizeCreateTicks(Math.round(beat * APP.PPQ));
+    const track = p.drawTrack || "Melody";
+
+    // Optional: constrain bass notes to lower range for nicer defaults
+    let midi = midiRaw;
+    if (track === "Bass"){
+      midi = clamp(midiRaw, 28, 60);
+    } else if (track === "Chords"){
+      midi = clamp(midiRaw, 48, 84);
+    }
+
+    const dur = clamp((p.drawLenBeats || 1) * APP.PPQ, createQuantTicks, 999999);
+
+    // timeline clamp
+    const totalTicks = p.bars * APP.BEATS_PER_BAR * APP.PPQ;
+    ticks = clamp(ticks, 0, Math.max(0, totalTicks - 1));
+    const dur2 = clamp(dur, createQuantTicks, Math.max(createQuantTicks, totalTicks - ticks));
+
+    const k = keyFor(track, ticks, midi);
+    if (paint && paint.placedSet && paint.placedSet.has(k)) return;
+
+    // prevent duplicates vs existing events
+    const list = STATE.current.eventsByTrack[track] || [];
+    for (const e of list){
+      if (e.ticks === ticks && e.midi === midi){
+        if (paint && paint.placedSet) paint.placedSet.add(k);
+        return;
+      }
+    }
+
+    // add event
+    STATE.current.eventsByTrack[track] = list;
+    list.push({
+      track,
+      midi,
+      ticks,
+      durationTicks: dur2,
+      velocity: (track === "Bass") ? 0.88 : (track === "Chords") ? 0.75 : 0.80
+    });
+
+    STATE.current.eventsAll = mergeEvents(STATE.current.eventsByTrack);
+
+    // select last placed note
+    STATE.ui = STATE.ui || {};
+    STATE.ui.selectedNoteId = `${track}:${ticks}:${midi}:${dur2}`;
+
+    if (paint && paint.placedSet) paint.placedSet.add(k);
+
+    renderPianoRoll();
+    auditionMidi(midi, track);
+  }
+
+  canvas.addEventListener("pointerdown", (ev)=>{
+    const p = UI.gatherParams();
+    if (!p.paintMode) return;
+    if (!STATE.current) return;
+
+    paint = { pointerId: ev.pointerId, placedSet: new Set() };
+    canvas.setPointerCapture(ev.pointerId);
+
+    UI.setStatus("Paint mode: drawing…");
+    paintAtPointer(ev);
+  });
+
+  canvas.addEventListener("pointermove", (ev)=>{
+    if (!paint) return;
+    if (ev.pointerId !== paint.pointerId) return;
+    paintAtPointer(ev);
+  });
+
+  function end(ev){
+    if (!paint) return;
+    try{
+      if (ev && ev.pointerId != null) canvas.releasePointerCapture(ev.pointerId);
+    }catch(e){}
+    paint = null;
+    UI.setStatus("Paint mode: done");
+  }
+
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+// === END PATCH: ui-pianoroll-paint-mode ===
+
+
+
+// ============================================================
+// === PATCH: ui-pianoroll-loop-select ===
+// ============================================================
+function bindPianoRollLoopSelect(){
+  if (!ui.events) return;
+
+  const canvas = ui.events.querySelector("canvas.prCanvas");
+  if (!canvas) return;
+
+  if (canvas.dataset.boundLoopSelect === "1") return;
+  canvas.dataset.boundLoopSelect = "1";
+
+  canvas.style.touchAction = "none";
+
+  let loopDrag = null;
+  // loopDrag = { pointerId, startBeat }
+
+  function snapToGrid(beat){
+    // 1/16 note resolution in beats (1 beat = 1/4 note)
+    // 1/16 note = 0.25 beats
+    const q = 0.25;
+    return Math.round(beat / q) * q;
+  }
+
+  const MIN_LEN_BEATS = 0.25; // ✅ minimum loop length = 1/16 note
+
+  function beatFromPointer(ev){
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = last.view.dpr || 1;
+
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+
+    // loop select ONLY in BAR lane
+    if (!last.view.isInBarLane(x, y)) return null;
+
+    const beat = last.view.beatForX(x);
+    return clamp(beat, 0, last.view.totalBeats);
+  }
+
+  function setLoop(a, b){
+    STATE.ui = STATE.ui || {};
+    STATE.ui.loopStartBeat = a;
+    STATE.ui.loopEndBeat = b;
+    renderPianoRoll();
+  }
+
+  function clearLoop(){
+    STATE.ui = STATE.ui || {};
+    STATE.ui.loopStartBeat = NaN;
+    STATE.ui.loopEndBeat = NaN;
+    renderPianoRoll();
+  }
+
+  // Drag to set loop (min length = 1/16)
+  canvas.addEventListener("pointerdown", (ev)=>{
+    if (!STATE.current) return;
+
+    const beat = beatFromPointer(ev);
+    if (beat == null) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    if (!last || !last.view) return;
+
+    const b0 = snapToGrid(beat);
+    loopDrag = { pointerId: ev.pointerId, startBeat: b0 };
+
+    canvas.setPointerCapture(ev.pointerId);
+
+    // ✅ start with minimum 1/16 loop
+    const b1 = clamp(b0 + MIN_LEN_BEATS, 0, last.view.totalBeats);
+    setLoop(b0, b1);
+    UI.setStatus("Loop: drag to extend (BAR lane). Double-click BAR lane to clear.");
+  });
+
+  canvas.addEventListener("pointermove", (ev)=>{
+    if (!loopDrag) return;
+    if (ev.pointerId !== loopDrag.pointerId) return;
+
+    const beat = beatFromPointer(ev);
+    if (beat == null) return;
+
+    const last = PianoRoll.getLast(ui.events);
+    const total = last?.view?.totalBeats ?? 999999;
+
+    const b0 = loopDrag.startBeat;
+    let b1 = snapToGrid(beat);
+
+    // ✅ enforce at least 1/16 length (both directions)
+    if (Math.abs(b1 - b0) < MIN_LEN_BEATS){
+      b1 = (b1 >= b0) ? (b0 + MIN_LEN_BEATS) : (b0 - MIN_LEN_BEATS);
+    }
+
+    // clamp
+    b1 = clamp(b1, 0, total);
+    setLoop(b0, b1);
+  });
+
+  function end(){
+    if (!loopDrag) return;
+    try{ canvas.releasePointerCapture(loopDrag.pointerId); }catch(e){}
+    loopDrag = null;
+    UI.setStatus("Loop set ✓");
+  }
+
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+
+  // Double-click BAR lane to clear loop
+  canvas.addEventListener("dblclick", (ev)=>{
+    const beat = beatFromPointer(ev);
+    if (beat == null) return;
+
+    clearLoop();
+    UI.setStatus("Loop cleared");
+  });
+}
+// === END PATCH: ui-pianoroll-loop-select ===
+
+
+// ============================================================
+// === PATCH: ui-mix-controls ===
+// ============================================================
+function ensureMixStyles(){
+  if (document.getElementById("mixStyles")) return;
+  const style = document.createElement("style");
+  style.id = "mixStyles";
+  style.textContent = `
+    .partHdrCtrls{ display:flex; align-items:center; gap:10px; }
+    .mixTinyBtns{ display:flex; gap:6px; }
+    .mixTinyBtn{
+      padding:6px 8px;
+      border-radius:10px;
+      font-weight:900;
+      letter-spacing:.2px;
+      min-width: 34px;
+      justify-content:center;
+      opacity:.62;
+    }
+    .mixTinyBtn.on{
+      opacity: 1;
+      transform: translateY(-1px);
+      border-color: rgba(103,183,255,.55);
+    }
+    .gainRow{
+      display:grid;
+      grid-template-columns: 1fr 64px;
+      gap:10px;
+      align-items:center;
+      margin-top: 8px;
+    }
+    .gainDb{
+      font-size:11px;
+      color: var(--muted);
+      text-align:right;
+      font-family: var(--mono);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function findPartSection(titleText){
+  const want = String(titleText||"").trim().toLowerCase();
+  const sections = [...document.querySelectorAll(".section")];
+  for (const sec of sections){
+    const b = sec.querySelector(".sectTitle b");
+    if (!b) continue;
+    if (b.textContent.trim().toLowerCase() === want) return sec;
+  }
+  return null;
+}
+
+function injectMixIntoParts(){
+  ensureMixStyles();
+  ensureMixState();
+
+  for (const track of APP.TRACKS){
+    const sec = findPartSection(track);
+    if (!sec) continue;
+
+    // ----- Header buttons (Mute/Solo) -----
+    const titleRow = sec.querySelector(".sectTitle");
+    if (titleRow && !titleRow.querySelector(`[data-mixhdr="${track}"]`)){
+      // wrap existing right-side controls (Lock checkbox) neatly
+      const lockLabel = titleRow.querySelector("label.check");
+      const rightWrap = document.createElement("div");
+      rightWrap.className = "partHdrCtrls";
+      rightWrap.setAttribute("data-mixhdr", track);
+
+      const btns = document.createElement("div");
+      btns.className = "mixTinyBtns";
+      btns.innerHTML = `
+        <button type="button" class="mixTinyBtn danger" data-mute="${track}" title="Mute ${track}">M</button>
+        <button type="button" class="mixTinyBtn primary" data-solo="${track}" title="Solo ${track}">S</button>
+      `;
+
+      // remove lock label from title row and re-append inside wrap
+      if (lockLabel){
+        lockLabel.remove();
+        rightWrap.appendChild(btns);
+        rightWrap.appendChild(lockLabel);
+      } else {
+        rightWrap.appendChild(btns);
+      }
+
+      titleRow.appendChild(rightWrap);
+    }
+
+    // ----- Gain slider row inside section -----
+    if (!sec.querySelector(`[data-gainrow="${track}"]`)){
+      const row = document.createElement("div");
+      row.className = "gainRow";
+      row.setAttribute("data-gainrow", track);
+      row.innerHTML = `
+        <div>
+          <label style="margin:0 0 6px;">Gain</label>
+          <input data-gain="${track}" type="range" min="-24" max="6" step="0.5" value="${STATE.mix[track].gainDb}">
+        </div>
+        <div class="gainDb" data-gainlbl="${track}">${STATE.mix[track].gainDb.toFixed(1)} dB</div>
+      `;
+
+      // place gain row near top of section body (after sectTitle)
+      // sectTitle is the first child; insert after it
+      const after = sec.querySelector(".sectTitle");
+      if (after && after.nextSibling){
+        sec.insertBefore(row, after.nextSibling);
+      } else {
+        sec.appendChild(row);
+      }
+    }
+  }
+
+  bindMixInParts();
+  syncMixInPartsUI();
+}
+
+function syncMixInPartsUI(){
+  ensureMixState();
+  for (const track of APP.TRACKS){
+    const m = STATE.mix[track];
+
+    const btnM = document.querySelector(`[data-mute="${track}"]`);
+    const btnS = document.querySelector(`[data-solo="${track}"]`);
+    const gain = document.querySelector(`[data-gain="${track}"]`);
+    const lbl  = document.querySelector(`[data-gainlbl="${track}"]`);
+
+    if (btnM) btnM.classList.toggle("on", !!m.mute);
+    if (btnS) btnS.classList.toggle("on", !!m.solo);
+
+    if (gain) gain.value = String(m.gainDb);
+    if (lbl)  lbl.textContent = `${Number(m.gainDb).toFixed(1)} dB`;
+  }
+}
+
+function bindMixInParts(){
+  // bind once at document level (simple + resilient)
+  if (document.body.dataset.boundMixParts === "1") return;
+  document.body.dataset.boundMixParts = "1";
+
+  function apply(){
+    try{ if (typeof applyMixToEngine === "function") applyMixToEngine(); }catch(e){}
+  }
+
+  document.addEventListener("click", (ev)=>{
+    const el = ev.target;
+    if (!(el instanceof HTMLElement)) return;
+
+    const muteTrack = el.getAttribute("data-mute");
+    const soloTrack = el.getAttribute("data-solo");
+
+    if (muteTrack){
+      ensureMixState();
+      STATE.mix[muteTrack].mute = !STATE.mix[muteTrack].mute;
+      syncMixInPartsUI();
+      apply();
+      UI.setStatus(`Mix: ${muteTrack} ${STATE.mix[muteTrack].mute ? "Muted" : "Unmuted"}`);
+      return;
+    }
+
+    if (soloTrack){
+      ensureMixState();
+      STATE.mix[soloTrack].solo = !STATE.mix[soloTrack].solo;
+      syncMixInPartsUI();
+      apply();
+      UI.setStatus(`Mix: ${soloTrack} ${STATE.mix[soloTrack].solo ? "Solo" : "Unsolo"}`);
+      return;
+    }
+  });
+
+  document.addEventListener("input", (ev)=>{
+    const el = ev.target;
+    if (!(el instanceof HTMLInputElement)) return;
+
+    const t = el.getAttribute("data-gain");
+    if (!t) return;
+
+    ensureMixState();
+    const v = parseFloat(el.value);
+    STATE.mix[t].gainDb = Number.isFinite(v) ? v : 0;
+
+    const lbl = document.querySelector(`[data-gainlbl="${t}"]`);
+    if (lbl) lbl.textContent = `${STATE.mix[t].gainDb.toFixed(1)} dB`;
+
+    apply();
+  });
+}
+
+// Backwards compat: keep the old name the rest of the code may call
+function injectMixUI(){
+  injectMixIntoParts();
+}
+// === END PATCH: ui-mix-controls ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  function setStatus(text){
+    if (ui.status) ui.status.textContent = text;
+  }
+
+  function uiPlayState(isPlaying){
+    ui.btnPlay.disabled = isPlaying || !STATE.current;
+    ui.btnStop.disabled = !isPlaying;
+  }
+
+  function setAudioLocked(isLocked){
+    if (!ui.audioDot || !ui.audioState) return;
+    ui.audioDot.classList.toggle("g", !isLocked);
+    ui.audioDot.classList.toggle("r", isLocked);
+    ui.audioState.textContent = isLocked ? "Audio locked" : "Audio ready";
+  }
+
+  function updateMini(){
+    if (ui.humanizeVal) ui.humanizeVal.textContent = `${ui.humanize.value}ms`;
+    if (ui.swingVal) ui.swingVal.textContent = `${ui.swing.value}%`;
+    if (ui.mixtureVal) ui.mixtureVal.textContent = `${ui.mixture.value}%`;
+    if (ui.chordTightVal) ui.chordTightVal.textContent = `${ui.chordTight.value}ms`;
+  }
+
+function gatherParams(){
+  return {
+    keyName: ui.key.value,
+    mode: ui.scale.value,
+    bars: parseInt(ui.bars.value, 10),
+    bpm: clamp(parseInt(ui.tempo.value, 10) || 124, APP.LIMITS.bpmMin, APP.LIMITS.bpmMax),
+    seedStr: (ui.seed.value || "").trim(),
+
+    humanizeMs: parseInt(ui.humanize.value, 10) || 0,
+    swingPct: parseInt(ui.swing.value, 10) || 0,
+
+    mood: ui.mood.value,
+    mixturePct: parseInt(ui.mixture.value, 10) || 0,
+    mixtureDir: ui.mixtureDir.value,
+    extensions: ui.extensions.value,
+
+    lockChords: !!ui.lockChords.checked,
+    lockBass: !!ui.lockBass.checked,
+    lockMelody: !!ui.lockMelody.checked,
+
+    chordComplexity: ui.chordComplexity.value,
+    chordStyle: ui.chordStyle.value,
+    chordTightMs: parseInt(ui.chordTight.value, 10) || 0,
+    chordRegister: ui.chordRegister.value,
+
+    bassComplexity: ui.bassComplexity.value,
+    bassStyle: ui.bassStyle.value,
+
+    melodyComplexity: ui.melodyComplexity.value,
+    melodyContour: ui.melodyContour.value,
+
+    exportMode: ui.exportMode.value,
+    filePrefix: (ui.filePrefix.value || "").trim(),
+
+    // ✅ STEP 9: draw / paint params
+    paintMode: !!ui.paintMode?.checked,
+    drawTrack: ui.drawTrack?.value || "Melody",
+    drawLenBeats: parseInt(ui.drawLen?.value || "1", 10),
+  };
+}
+
+
+  function renderSummary(){
+    if (!ui.summary) return;
+    if (!STATE.current) { ui.summary.textContent = "Generate something…"; return; }
+
+    const s = STATE.current.summary;
+    ui.summary.textContent =
+      `Seed: ${s.seed}\n` +
+      `Key: ${s.key} • Mode: ${s.mode} • Mood: ${s.mood}\n` +
+      `Bars: ${s.bars} • BPM: ${s.bpm}\n` +
+      `Mixture: ${s.mixture} (${s.mixtureDir}) • Ext: ${s.extensions}\n` +
+      `Chords: ${s.chord} • Bass: ${s.bass} • Melody: ${s.melody}\n` +
+      `Progression: ${s.progression}`;
+  }
+
+function renderPianoRoll(){
+  if (!ui.events) return;
+  const p = gatherParams();
+
+  const selectionId = (STATE.ui && STATE.ui.selectedNoteId) ? STATE.ui.selectedNoteId : null;
+  const playheadBeat = (STATE.ui && Number.isFinite(STATE.ui.playheadBeat)) ? STATE.ui.playheadBeat : 0;
+
+  if (!STATE.current){
+    PianoRoll.renderEmpty(ui.events, { bars: p.bars, minMidi: 36, maxMidi: 84, selectionId, playheadBeat });
+    return;
+  }
+  PianoRoll.render(ui.events, {
+    eventsByTrack: STATE.current.eventsByTrack,
+    bars: p.bars,
+    selectionId,
+    playheadBeat
+  });
+}
+
+
+  function renderOutput(){
+ // IMPORTANT: show empty roll on load
+renderPianoRoll();
+bindPianoRollKeyZones();
+bindPianoRollSelection();
+bindPianoRollDragNotes();
+bindPianoRollResizeNotes();
+bindPianoRollScrub();
+bindPianoRollCreateDelete();
+// bindPianoRollPaintMode();
+renderSummary();
+
+  }
+
+  async function ensureAudioUnlocked(){
+    // only unlock on user action (Generate/Play)
+    try{
+      await Tone.start();
+      setAudioLocked(false);
+      return true;
+    } catch (e){
+      setAudioLocked(true);
+      return false;
+    }
+  }
+
+  function bind(){
+    // sliders
+    ["input","change"].forEach(evt=>{
+      ui.humanize.addEventListener(evt, updateMini);
+      ui.swing.addEventListener(evt, updateMini);
+      ui.mixture.addEventListener(evt, updateMini);
+      ui.chordTight.addEventListener(evt, updateMini);
+    });
+
+    // re-render empty roll when bars changes and nothing generated yet
+    ui.bars.addEventListener("change", ()=>{
+      if (!STATE.current) renderPianoRoll();
+    });
+
+    // Generate
+    ui.btnGenerate.addEventListener("click", async ()=>{
+      await ensureAudioUnlocked(); // harmless if user never plays; helps your badge
+      generateOrRegen({regen:false});
+    });
+
+    // Regen
+    ui.btnRegen.addEventListener("click", async ()=>{
+      await ensureAudioUnlocked();
+      generateOrRegen({regen:true});
+    });
+
+    // Play
+    ui.btnPlay.addEventListener("click", async ()=>{
+      if (!STATE.current) return;
+      const ok = await ensureAudioUnlocked();
+      if (!ok) { setStatus("Audio locked"); return; }
+      const p = gatherParams();
+      schedulePlayback({ eventsByTrack: STATE.current.eventsByTrack, bpm: p.bpm });
+      playheadStart();
+    });
+
+    // Stop
+    ui.btnStop.addEventListener("click", ()=>{
+      stopPlayback();
+      playheadStop(true);
+    });
+
+    // Export
+    ui.btnExport.addEventListener("click", ()=>{
+      doExport();
+    });
+
+    // initial
+    window.addEventListener("resize", ()=>{
+      // redraw current view
+      renderPianoRoll();
+    });
+  }
+
+  function initUiDefaults(){
+    updateMini();
+    setStatus("Ready");
+    setAudioLocked(true);
+    ui.btnPlay.disabled = true;
+    ui.btnStop.disabled = true;
+    ui.btnExport.disabled = true;
+
+    // IMPORTANT: show empty roll on load
+    renderPianoRoll();
+    renderSummary();
+    injectMixUI();
+  }
+
+  return {
+    ui,
+    bind,
+    initUiDefaults,
+    gatherParams,
+    renderOutput,
+    setStatus,
+    uiPlayState
+  };
+})();
+// ============================================================
+// END SECTION: ui-bindings
+// ============================================================
+
+
+
+    // ============================================================
+    // SECTION: dev-tools
+    // ============================================================
+    const DEV = {
+      assertSaneState(){
+        try{
+          if (!STATE.current) return;
+          const by = STATE.current.eventsByTrack;
+          for (const name of APP.TRACKS){
+            const evs = by[name] || [];
+            for (const e of evs){
+              if (!Number.isFinite(e.ticks) || e.ticks < 0) throw new Error(`Bad ticks in ${name}`);
+              if (!Number.isFinite(e.durationTicks) || e.durationTicks <= 0) throw new Error(`Bad duration in ${name}`);
+              if (!Number.isFinite(e.midi) || e.midi < 0 || e.midi > 127) throw new Error(`Bad midi in ${name}`);
+            }
+          }
+        } catch (err){
+          console.warn("DEV.assertSaneState failed:", err);
+        }
+      }
+    };
+
+ // ============================================================
+// SECTION: app-init
+// ============================================================
+function init(){
+  try{
+    UI.bind();
+    UI.initUiDefaults();
+  } catch (err){
+    console.error("INIT FAILED:", err);
+    try{
+      const status = document.getElementById("status");
+      if (status) status.textContent = "Init error (see console)";
+      const summary = document.getElementById("summary");
+      if (summary) summary.textContent = `Init error:\n${err?.message || err}`;
+    }catch(e){}
+  }
+}
+
+// Always wait for DOM (prevents silent refresh failures if script order changes)
+window.addEventListener("DOMContentLoaded", init);
+
+  </script>
+</body>
+</html>
